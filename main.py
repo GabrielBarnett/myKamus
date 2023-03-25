@@ -49,12 +49,12 @@ def searchForWord_clip(string):
     sentence_index = 1
     def_index = 1
     print("Your input: " + de_capitalised)
-    print("Word translations below:")
+    print("Word translations for " + de_capitalised + " below:")
     for line in dictionary:
         if de_capitalised in line:
             print(str(def_index) + ": " + line)
             def_index += 1
-    print("Example sentences below:")
+    print("Example sentences for " + de_capitalised + " below:")
     for line in sentences:
         if de_capitalised in line and sentence_count > 0:
             print(str(sentence_index) + ": " + line)

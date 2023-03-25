@@ -1,4 +1,25 @@
-# This is an experimental python project
+"""
+myKamus by Gabriel Barnett
+
+myKamus is An open source instant translation software for Indonesian that provides the user
+with complex Indonesian-English translation capabilities.
+
+To run the program you cna either do it from inside an IDE of your choice, or with Python installed either:
+    a) Run clipboard_monitor through IDLE
+    b) Launch a Powershell session through the directory and run clipboard_monitor through it
+
+It utilises several open source bitext corpus to provide access to over 50million example sentences and words for
+the purposes of translation.
+
+The program is free to use for academic and non-commercial applicaitons, if you wish to use it for something else
+email me at gabrielcbarnett@gmail.com. There will be no cost involved for a license to use in a corporate, government
+or military environment, it is so we can discuss any needs you might have for updates, specific vocabulary
+or language requirements. Again, it will be free but a representative from your organisation must make contact with
+me first.
+
+If you like this program and have found it useful for your work, feel free to email with your success story or any
+improvements that you might suggest.
+"""
 
 print("Loading...")
 
@@ -11,16 +32,16 @@ with open('en-id_sentences.txt', encoding='utf-8') as sentences:
 print("Finished loading")
 print("Welcome to myKamus")
 print("With help from:")
-print("P. Lison and J. Tiedemann, 2016, OpenSubtitles2016: Extracting Large Parallel Corpora from Movie and TV Subtitles. "
-      "In Proceedings of the 10th International Conference on Language Resources and Evaluation (LREC 2016)")
+print("P. Lison and J. Tiedemann, 2016, OpenSubtitles2016: Extracting Large Parallel Corpora from Movie and TV "
+      "Subtitles. ""In Proceedings of the 10th International Conference on "
+      "Language Resources and Evaluation (LREC 2016)")
 
 
-def searchForWord():
+def search_for_word():
     print("We are ready to take your word, please type it below:")
     user_input = input()
     de_capitalised = user_input.lower()
     print("Word translations below:")
-    dic_count = 30
     sentence_count = 4
     sentence_index = 1
     def_index = 1
@@ -36,16 +57,16 @@ def searchForWord():
             sentence_index += 1
             sentence_count -= 1
         prev_line = line
-    print("Searching finsihed, would you like to search again? y/n")
+    print("Searching finished, would you like to search again? y/n")
     user_response = input()
     if user_response == 'y':
-        searchForWord()
+        search_for_word()
     else:
         return "Have a good day"
 
-def searchForWord_clip(string):
+
+def search_for_word_clip(string):
     de_capitalised = string.lower()
-    dic_count = 30
     sentence_count = 4
     sentence_index = 1
     def_index = 1

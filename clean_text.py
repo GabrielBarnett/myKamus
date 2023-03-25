@@ -11,6 +11,7 @@ with open("en-id.tmx", encoding="UTF-8") as dic:
 
 def operate_on_all_lines(file):
     file_as_list = []
+
     for line in file:
         clean_text = remove_numbers(line)
         file_as_list.append(clean_text)

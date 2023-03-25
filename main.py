@@ -1,5 +1,4 @@
 # This is an experimental python project
-print("Welcome to myKamus")
 print("Loading...")
 
 with open('en-id_dict.txt', encoding="utf-8") as dic:
@@ -8,8 +7,11 @@ with open('en-id_dict.txt', encoding="utf-8") as dic:
 with open('en-id_sentences.txt', encoding='utf-8') as sentences:
     sentences = sentences.readlines()
 
-#input for test word
-
+print("Finished loading")
+print("Welcome to myKamus")
+print("With help from:")
+print("P. Lison and J. Tiedemann, 2016, OpenSubtitles2016: Extracting Large Parallel Corpora from Movie and TV Subtitles. "
+      "In Proceedings of the 10th International Conference on Language Resources and Evaluation (LREC 2016)")
 
 
 def searchForWord():

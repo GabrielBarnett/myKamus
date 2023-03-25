@@ -1,4 +1,5 @@
 # This is an experimental python project
+
 print("Loading...")
 
 with open('en-id_dict.txt', encoding="utf-8") as dic:
@@ -62,5 +63,3 @@ def searchForWord_clip(string):
             sentence_index += 1
             sentence_count -= 1
         prev_line = line
-
-# searchForWord()

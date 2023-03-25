@@ -1,5 +1,3 @@
-import sys
-import os
 import time
 import pyperclip
 from main import searchForWord_clip

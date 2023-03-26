@@ -8,7 +8,7 @@ To run the program you cna either do it from inside an IDE of your choice, or wi
     a) Run clipboard_monitor through IDLE
     b) Launch a Powershell session through the directory and run clipboard_monitor through it
 
-It utilises several open source bitext corpus to provide access to over 50million example sentences and words for
+It utilises several open source bitext corpus to provide access to over 50 million example sentences and words for
 the purposes of translation.
 
 The program is free to use for academic and non-commercial applicaitons, if you wish to use it for something else

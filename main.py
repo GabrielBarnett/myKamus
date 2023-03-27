@@ -58,11 +58,6 @@ def search_for_word():
             sentence_count -= 1
         prev_line = line
     print("Searching finished, would you like to search again? y/n")
-    user_response = input()
-    if user_response == 'y':
-        search_for_word()
-    else:
-        return "Have a good day"
 
 
 def search_for_word_clip(string):

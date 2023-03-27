@@ -40,3 +40,5 @@ have not copied any spaces around single words or phrases
 
 4: If you would like to search for a specific word click on the console and press "ctrl+s" and then type in your desired word or phrase.
 
+5: If you would like to load the rest of the example sentences you may press the letter "l" in the console, this may bring 
+up many hundreds of thousands of resutls though depending on the simplicity and rarity of the word.

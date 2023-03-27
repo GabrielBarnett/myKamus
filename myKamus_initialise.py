@@ -36,7 +36,9 @@ print("1: Highlight an Indonesian word or short phrase and copy it (ctrl+c)\n"
       "2: Watch your translations come up in real time, if there are no sentences or word translations then the word may be too unique  \n"
       "or niche to search. If this happens the recomendation is to search sub strings within the Indonesian word itself. Ensure that you\n"
       "have not copied any spaces around single words or phrases\n"
-      "4: If you would like to search for a specific word click on the console and press ctrl+s and then type in your desired word or phrase.\n")
+      "4: If you would like to search for a specific word click on the console and press ctrl+s and then type in your desired word or phrase.\n"
+      "5: If you wish to show the rest of the example sentences you may press the l key. WARNING: Depending on how common"
+      "or simple the word is doing so may bring back many hundreds of thousands of results.")
 
 recent_value = pyperclip.paste()
 tmp_value = pyperclip.paste()

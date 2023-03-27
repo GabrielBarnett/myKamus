@@ -64,4 +64,5 @@ def load_all_sentences(string):
             print(str(index) + ": " + line)
             print(str(index) + ": " + prev_line)
             index += 1
+            print('All example sentences for the word ' + string + " have been loaded.")
         prev_line = line

@@ -12,9 +12,9 @@ It utilises several open source bitext corpus to provide access to over 50 milli
 the purposes of translation.
 
 The program is free to use for academic and non-commercial applicaitons, if you wish to use it for something else
-email me at gabrielcbarnett@gmail.com. There will be no cost involved it is so we can discuss any needs you might have for updates, specific vocabulary
-or language requirements. Again, it will be free but a representative from your organisation must make contact with
-me first.
+email me at gabrielcbarnett@gmail.com. There will be no cost involved, it is so we can discuss any needs you might have
+for updates, specific vocabulary or language requirements. Again, it will be free but a representative from your
+organisation must make contact with me first.
 
 If you like this program and have found it useful for your work, feel free to email with your success story or any
 improvements that you might suggest.

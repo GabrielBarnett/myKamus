@@ -33,8 +33,6 @@ def search_for_word():
             sentence_index += 1
             sentence_count -= 1
         prev_line = line
-    print("Searching finished, would you like to search again? y/n")
-
 
 def search_for_word_clip(string):
     de_capitalised = string.lower()

@@ -27,10 +27,10 @@ Subtitles. In Proceedings of the 10th International Conference on Language Resou
 
 import time
 import pyperclip
-from search_functions import search_for_word_clip
+from search_functions import search_for_word_clip, load_all_sentences
 import keyboard
 
-print("Welcome to myKamus\n")
+print("Welcome to myKamus by Gabriel Barnett\n")
 print("Instructions:\n")
 print("1: Highlight an Indonesian word or short phrase and copy it (ctrl+c)\n"
       "2: Watch your translations come up in real time, if there are no sentences or word translations then the word may be too unique  \n"
@@ -47,6 +47,8 @@ while True:
         print("What word would you like to search for?\n")
         tmp_value = input()
         search_for_word_clip(tmp_value)
+    elif keyboard.is_pressed('l'):
+        load_all_sentences(tmp_value)
     elif tmp_value != recent_value:
         recent_value = tmp_value
         search_for_word_clip(recent_value)

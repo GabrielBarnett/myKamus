@@ -55,3 +55,15 @@ def search_for_word_clip(string):
             sentence_index += 1
             sentence_count -= 1
         prev_line = line
+def load_all_sentences(string):
+    """
+    :param string: word that is to be searched
+    :return: returns all of the sentences that are in the sentence file for the string
+    """
+    index = 0
+    for line in sentences:
+        if string.lower() in line:
+            print(str(index) + ": " + line)
+            print(str(index) + ": " + prev_line)
+            index += 1
+        prev_line = line

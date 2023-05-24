@@ -7,13 +7,18 @@ print("myKamus is loading...\n")
 with open('en-id_dict.txt', encoding="utf-8") as dic:
     dictionary = dic.readlines()
 
+
 with open('en-id_sentences.txt', encoding='utf-8') as sentences:
     sentences = sentences.readlines()
+
+
 def search_for_word():
     """
     Not currently in use, defined for testing purposes and the
     :return: string(s)
     """
+    # declaring the prev_line variable so that we do not run into issues
+    prev_line = ""
     print("We are ready to take your word, please type it below:")
     user_input = input()
     de_capitalised = user_input.lower()
@@ -34,7 +39,10 @@ def search_for_word():
             sentence_count -= 1
         prev_line = line
 
+
 def search_for_word_clip(string):
+    # declaring the prev_line variable so that we do not run into issues
+    prev_line = ""
     de_capitalised = string.lower()
     sentence_count = 4
     sentence_index = 1
@@ -53,6 +61,8 @@ def search_for_word_clip(string):
             sentence_index += 1
             sentence_count -= 1
         prev_line = line
+
+
 def load_all_sentences(string):
     """
     :param string: word that is to be searched

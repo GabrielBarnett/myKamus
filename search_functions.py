@@ -68,6 +68,8 @@ def load_all_sentences(string):
     :param string: word that is to be searched
     :return: returns all of the sentences that are in the sentence file for the string
     """
+    # declaring the prev_line variable so that we do not run into issues
+    prev_line = ""
     index = 0
     for line in sentences:
         if string.lower() in line:

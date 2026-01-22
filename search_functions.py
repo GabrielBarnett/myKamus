@@ -6,6 +6,7 @@ from collections import defaultdict
 import json
 from pathlib import Path
 import re
+import textwrap
 
 print("myKamus is loading...\n")
 
@@ -26,6 +27,7 @@ dictionary = None
 sentences = None
 dictionary_index = None
 sentences_index = None
+WRAP_WIDTH = 80
 
 
 def load_config():
@@ -77,6 +79,34 @@ def normalize_query(string):
 
 def build_phrase_pattern(query):
     return re.compile(rf"\b{re.escape(query)}\b", re.IGNORECASE)
+
+
+def format_dictionary_line(line):
+    tokens = line.strip().split()
+    if not tokens:
+        return ""
+    tokens = ["·" if token == "." else token for token in tokens]
+    return " ".join(tokens)
+
+
+def format_labeled_line(label, text):
+    cleaned = " ".join(text.strip().split())
+    indent = " " * (len(label) + 1)
+    return textwrap.fill(
+        cleaned,
+        width=WRAP_WIDTH,
+        initial_indent=f"{label} ",
+        subsequent_indent=indent,
+    )
+
+
+def format_sentence_block(index, match_line, translation_line):
+    lines = [f"{index}:"]
+    if match_line:
+        lines.append(format_labeled_line("Match:", match_line))
+    if translation_line:
+        lines.append(format_labeled_line("Translation:", translation_line))
+    return "\n".join(lines)
 
 
 def iter_matching_sentence_indices(query):
@@ -153,21 +183,24 @@ def search_for_word_clip(string):
     print("Your input: " + query.casefold())
     print("Word translations for " + query.casefold() + " below:")
     for line in iter_matching_dictionary_lines(query):
-        print(str(def_index) + ": " + line)
+        formatted_line = format_dictionary_line(line)
+        if not formatted_line:
+            continue
+        print(textwrap.fill(f"{def_index}: {formatted_line}", width=WRAP_WIDTH))
         def_index += 1
     print("Example sentences for " + query.casefold() + " below:")
     emitted = set()
     for i in iter_matching_sentence_indices(query):
         if sentence_count <= 0:
             break
-        line = sentences[i]
-        prev_line = sentences[i - 1] if i > 0 else ""
-        if line not in emitted:
-            print(str(sentence_index) + ": " + line)
-            emitted.add(line)
-        if prev_line and prev_line not in emitted:
-            print(str(sentence_index) + ": " + prev_line)
-            emitted.add(prev_line)
+        line = sentences[i].strip()
+        prev_line = sentences[i - 1].strip() if i > 0 else ""
+        pair_key = (line, prev_line)
+        if pair_key in emitted:
+            continue
+        print(format_sentence_block(sentence_index, line, prev_line))
+        print()
+        emitted.add(pair_key)
         sentence_index += 1
         sentence_count -= 1
 
@@ -186,14 +219,14 @@ def load_all_sentences(string):
     found_any = False
     emitted = set()
     for i in iter_matching_sentence_indices(query):
-        line = sentences[i]
-        prev_line = sentences[i - 1] if i > 0 else ""
-        if line not in emitted:
-            print(str(index) + ": " + line)
-            emitted.add(line)
-        if prev_line and prev_line not in emitted:
-            print(str(index) + ": " + prev_line)
-            emitted.add(prev_line)
+        line = sentences[i].strip()
+        prev_line = sentences[i - 1].strip() if i > 0 else ""
+        pair_key = (line, prev_line)
+        if pair_key in emitted:
+            continue
+        print(format_sentence_block(index, line, prev_line))
+        print()
+        emitted.add(pair_key)
         index += 1
         found_any = True
     if found_any:

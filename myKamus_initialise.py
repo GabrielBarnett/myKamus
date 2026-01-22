@@ -27,31 +27,39 @@ Subtitles. In Proceedings of the 10th International Conference on Language Resou
 
 import time
 import pyperclip
-from search_functions import search_for_word_clip, load_all_sentences
+from search_functions import load_all_sentences, load_data, search_for_word_clip
 import keyboard
 
 print("Welcome to myKamus by Gabriel Barnett\n")
 print("Instructions:\n")
 print("1: Highlight an Indonesian word or short phrase and copy it (ctrl+c)\n"
       "2: Watch your translations come up in real time, if there are no sentences or word translations then the word may be too unique  \n"
-      "or niche to search. If this happens the recomendation is to search sub strings within the Indonesian word itself. Ensure that you\n"
+      "or niche to search. If this happens the recommendation is to search substrings within the Indonesian word itself. Ensure that you\n"
       "have not copied any spaces around single words or phrases\n"
-      "4: If you would like to search for a specific word click on the console and press ctrl+s and then type in your desired word or phrase.\n"
+      "3: If you would like to search for a specific word click on the console and press ctrl+s and then type in your desired word or phrase.\n"
       "5: If you wish to show the rest of the example sentences you may press the l key. WARNING: Depending on how common"
       "or simple the word is doing so may bring back many hundreds of thousands of results.")
 
+load_data()
+
 recent_value = pyperclip.paste()
 tmp_value = pyperclip.paste()
+ctrl_s_pressed = False
+l_pressed = False
 
 while True:
     tmp_value = pyperclip.paste()
-    if keyboard.is_pressed('ctrl+s'):
+    ctrl_s_current = keyboard.is_pressed('ctrl+s')
+    l_current = keyboard.is_pressed('l')
+    if ctrl_s_current and not ctrl_s_pressed:
         print("What word would you like to search for?\n")
         tmp_value = input()
         search_for_word_clip(tmp_value)
-    elif keyboard.is_pressed('l'):
+    elif l_current and not l_pressed:
         load_all_sentences(tmp_value)
     elif tmp_value != recent_value:
         recent_value = tmp_value
         search_for_word_clip(recent_value)
+    ctrl_s_pressed = ctrl_s_current
+    l_pressed = l_current
     time.sleep(0.1)

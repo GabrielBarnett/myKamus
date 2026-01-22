@@ -4,12 +4,20 @@ Module contains the functions necessary to search through the databases provided
 
 print("myKamus is loading...\n")
 
-with open('en-id_dict.txt', encoding="utf-8") as dic:
-    dictionary = dic.readlines()
+dictionary = None
+sentences = None
 
 
-with open('en-id_sentences.txt', encoding='utf-8') as sentences:
-    sentences = sentences.readlines()
+def load_data():
+    global dictionary
+    global sentences
+    if dictionary is None:
+        with open('en-id_dict.txt', encoding="utf-8") as dic:
+            dictionary = dic.readlines()
+    if sentences is None:
+        with open('en-id_sentences.txt', encoding='utf-8') as sentences_file:
+            sentences = sentences_file.readlines()
+    return dictionary, sentences
 
 
 def search_for_word():
@@ -17,6 +25,7 @@ def search_for_word():
     Not currently in use, defined for testing purposes and the
     :return: string(s)
     """
+    load_data()
     # declaring the prev_line variable so that we do not run into issues
     prev_line = ""
     print("We are ready to take your word, please type it below:")
@@ -41,6 +50,7 @@ def search_for_word():
 
 
 def search_for_word_clip(string):
+    load_data()
     # declaring the prev_line variable so that we do not run into issues
     prev_line = ""
     de_capitalised = string.lower()
@@ -68,13 +78,16 @@ def load_all_sentences(string):
     :param string: word that is to be searched
     :return: returns all of the sentences that are in the sentence file for the string
     """
-    # declaring the prev_line variable so that we do not run into issues
+    load_data()
     prev_line = ""
     index = 0
+    found_any = False
     for line in sentences:
         if string.lower() in line:
             print(str(index) + ": " + line)
             print(str(index) + ": " + prev_line)
             index += 1
-            print('All example sentences for the word ' + string + " have been loaded.")
+            found_any = True
         prev_line = line
+    if found_any:
+        print('All example sentences for the word ' + string + " have been loaded.")

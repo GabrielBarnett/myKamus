@@ -24,6 +24,7 @@ class MyKamusGUI:
         self.gui_config = self.config.get("gui", {})
         self.clipboard_value = pyperclip.paste()
         self.paused = False
+        # Convert seconds to milliseconds for tkinter's scheduling.
         self.poll_interval_ms = int(self.config.get("poll_interval", 0.1) * 1000)
 
         self._build_ui()
@@ -164,10 +165,12 @@ class MyKamusGUI:
                 self.clipboard_value = current
                 self._update_clipboard_label(current)
                 self._run_search(current)
+        # Schedule the next poll; tkinter uses a single-threaded event loop.
         self.root.after(self.poll_interval_ms, self._poll_clipboard)
 
     def _run_search(self, query, load_all=False):
         if self.compact_mode_var.get() and not load_all:
+            # Compact mode caps results to keep the UI minimal.
             sentence_limit = 1
         else:
             sentence_limit = None if load_all else self.config.get("sentence_limit")

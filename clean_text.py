@@ -1,3 +1,4 @@
+from pathlib import Path
 import re
 
 
@@ -5,7 +6,9 @@ def remove_tags(string):
     clean_text = re.sub('<.*?>', '', string)
     return clean_text
 
-with open("en-id.tmx", encoding="UTF-8") as dic:
+BASE_DIR = Path(__file__).resolve().parent
+
+with (BASE_DIR / "en-id.tmx").open(encoding="UTF-8") as dic:
     dictionary = dic.readlines()
 
 
@@ -22,6 +25,6 @@ def operate_on_all_lines(file):
 
 if __name__ == "__main__":
     print(operate_on_all_lines(dictionary))
-    with open('en-id_sentences.txt', 'w', encoding="utf-8") as newdict:
+    with (BASE_DIR / "en-id_sentences.txt").open('w', encoding="utf-8") as newdict:
         for definition in operate_on_all_lines(dictionary):
             newdict.write(definition)

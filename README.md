@@ -30,6 +30,20 @@ pip install pyperclip keyboard
 4. To search for a specific word, focus the console, press `Ctrl+S`, and enter your term.
 5. To load all example sentences, press `L`. Note: this may return very large results for common words.
 
+### CLI usage
+
+You can also run a one-off search from the command line:
+
+```bash
+python cli.py "kata"
+python cli.py "kata" --all-sentences
+```
+
+### Configuration
+
+Runtime settings such as file paths, hotkeys, and the default sentence limit are stored in `config.json`.
+You can update this file to customize keyboard shortcuts or point to different data files.
+
 ## Data Sources
 
 Bitext corpus for sentences sourced from:
@@ -40,11 +54,13 @@ P. Lison and J. Tiedemann, 2016, OpenSubtitles2016: Extracting Large Parallel Co
 
 These are future follow-ups based on identified issues and performance considerations:
 
-- Add indexing or caching to avoid scanning the entire dictionary and sentence corpus for each query.
-- Provide a proper search boundary (e.g., word tokenization or regex matching) to reduce false positives.
-- Add a configuration file for paths, keyboard shortcuts, and output limits.
-- Improve sentence selection logic to avoid repeated sentences when multiple adjacent lines match.
-- Add a command-line entry point and help text (`--help`) for easier launching.
+These items have been implemented:
+
+- Indexing/caching to avoid scanning the entire dictionary and sentence corpus for each query.
+- Proper search boundaries (word tokenization or regex matching) to reduce false positives.
+- A configuration file for paths, keyboard shortcuts, and output limits.
+- Improved sentence selection logic to avoid repeated sentences when multiple adjacent lines match.
+- A command-line entry point and help text (`--help`) for easier launching.
 
 ## License and contact
 

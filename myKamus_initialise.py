@@ -51,7 +51,7 @@ ensure_dependencies()
 
 import pyperclip
 import keyboard
-from search_functions import load_all_sentences, load_data, search_for_word_clip
+from search_functions import load_all_sentences, load_config, load_data, search_for_word_clip
 
 warned_hotkeys = set()
 
@@ -76,6 +76,7 @@ print("1: Highlight an Indonesian word or short phrase and copy it (ctrl+c)\n"
       "5: If you wish to show the rest of the example sentences you may press the l key. WARNING: Depending on how common"
       "or simple the word is doing so may bring back many hundreds of thousands of results.")
 
+config = load_config()
 load_data()
 
 recent_value = pyperclip.paste()
@@ -83,10 +84,14 @@ tmp_value = pyperclip.paste()
 ctrl_s_pressed = False
 l_pressed = False
 
+manual_search_hotkey = config["hotkeys"]["manual_search"]
+load_all_hotkey = config["hotkeys"]["load_all_sentences"]
+poll_interval = config["poll_interval"]
+
 while True:
     tmp_value = pyperclip.paste()
-    ctrl_s_current = safe_is_pressed('ctrl+s')
-    l_current = safe_is_pressed('l')
+    ctrl_s_current = safe_is_pressed(manual_search_hotkey)
+    l_current = safe_is_pressed(load_all_hotkey)
     if ctrl_s_current and not ctrl_s_pressed:
         print("What word would you like to search for?\n")
         tmp_value = input()
@@ -98,4 +103,4 @@ while True:
         search_for_word_clip(recent_value)
     ctrl_s_pressed = ctrl_s_current
     l_pressed = l_current
-    time.sleep(0.1)
+    time.sleep(poll_interval)

@@ -1,0 +1,10 @@
+{
+  "dictionary_path": "en-id_dict.txt",
+  "sentences_path": "en-id_sentences.txt",
+  "sentence_limit": 4,
+  "hotkeys": {
+    "manual_search": "ctrl+s",
+    "load_all_sentences": "l"
+  },
+  "poll_interval": 0.1
+}

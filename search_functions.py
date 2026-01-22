@@ -1,23 +1,104 @@
 """
-Module contains the functions necessary to search through the databases provided byt the user.
+Module contains the functions necessary to search through the databases provided by the user.
 """
+
+from collections import defaultdict
+import json
+from pathlib import Path
+import re
 
 print("myKamus is loading...\n")
 
+BASE_DIR = Path(__file__).resolve().parent
+CONFIG_DEFAULTS = {
+    "dictionary_path": "en-id_dict.txt",
+    "sentences_path": "en-id_sentences.txt",
+    "sentence_limit": 4,
+    "hotkeys": {
+        "manual_search": "ctrl+s",
+        "load_all_sentences": "l",
+    },
+    "poll_interval": 0.1,
+}
+
+_CONFIG = None
 dictionary = None
 sentences = None
+dictionary_index = None
+sentences_index = None
+
+
+def load_config():
+    global _CONFIG
+    if _CONFIG is not None:
+        return _CONFIG
+    config_path = BASE_DIR / "config.json"
+    config = dict(CONFIG_DEFAULTS)
+    if config_path.exists():
+        with config_path.open(encoding="utf-8") as config_file:
+            loaded = json.load(config_file)
+        config.update(loaded)
+        config["hotkeys"] = {**CONFIG_DEFAULTS["hotkeys"], **loaded.get("hotkeys", {})}
+    _CONFIG = config
+    return config
+
+
+def build_index(lines):
+    index = defaultdict(list)
+    for i, line in enumerate(lines):
+        tokens = set(re.findall(r"\b\w+\b", line.casefold()))
+        for token in tokens:
+            index[token].append(i)
+    return index
 
 
 def load_data():
     global dictionary
     global sentences
+    global dictionary_index
+    global sentences_index
+    config = load_config()
     if dictionary is None:
-        with open('en-id_dict.txt', encoding="utf-8") as dic:
+        dictionary_path = BASE_DIR / config["dictionary_path"]
+        with dictionary_path.open(encoding="utf-8") as dic:
             dictionary = dic.readlines()
+        dictionary_index = build_index(dictionary)
     if sentences is None:
-        with open('en-id_sentences.txt', encoding='utf-8') as sentences_file:
+        sentences_path = BASE_DIR / config["sentences_path"]
+        with sentences_path.open(encoding="utf-8") as sentences_file:
             sentences = sentences_file.readlines()
+        sentences_index = build_index(sentences)
     return dictionary, sentences
+
+
+def normalize_query(string):
+    return string.strip()
+
+
+def build_phrase_pattern(query):
+    return re.compile(rf"\b{re.escape(query)}\b", re.IGNORECASE)
+
+
+def iter_matching_sentence_indices(query):
+    if " " in query:
+        pattern = build_phrase_pattern(query)
+        for i, line in enumerate(sentences):
+            if pattern.search(line):
+                yield i
+    else:
+        for i in sentences_index.get(query.casefold(), []):
+            yield i
+
+
+def iter_matching_dictionary_lines(query):
+    if " " in query:
+        pattern = build_phrase_pattern(query)
+        for line in dictionary:
+            if pattern.search(line):
+                yield line
+    else:
+        for i in dictionary_index.get(query.casefold(), []):
+            yield dictionary[i]
 
 
 def search_for_word():
@@ -30,47 +111,65 @@ def search_for_word():
     prev_line = ""
     print("We are ready to take your word, please type it below:")
     user_input = input()
-    de_capitalised = user_input.lower()
+    query = normalize_query(user_input)
+    if not query:
+        print("No word provided. Please enter a word or phrase.")
+        return
     print("Word translations below:")
-    sentence_count = 4
+    config = load_config()
+    sentence_count = config["sentence_limit"]
     sentence_index = 1
     def_index = 1
-    for line in dictionary:
-        if de_capitalised in line:
-            print(str(def_index) + ": " + line)
-            def_index += 1
+    for line in iter_matching_dictionary_lines(query):
+        print(str(def_index) + ": " + line)
+        def_index += 1
     print("Example sentences below:")
-    for line in sentences:
-        if de_capitalised in line and sentence_count > 0:
+    emitted = set()
+    for i in iter_matching_sentence_indices(query):
+        if sentence_count <= 0:
+            break
+        line = sentences[i]
+        prev_line = sentences[i - 1] if i > 0 else ""
+        if line not in emitted:
             print(str(sentence_index) + ": " + line)
+            emitted.add(line)
+        if prev_line and prev_line not in emitted:
             print(str(sentence_index) + ": " + prev_line)
-            sentence_index += 1
-            sentence_count -= 1
-        prev_line = line
+            emitted.add(prev_line)
+        sentence_index += 1
+        sentence_count -= 1
 
 
 def search_for_word_clip(string):
     load_data()
-    # declaring the prev_line variable so that we do not run into issues
-    prev_line = ""
-    de_capitalised = string.lower()
-    sentence_count = 4
+    query = normalize_query(string)
+    if not query:
+        print("No word provided. Please enter a word or phrase.")
+        return
+    config = load_config()
+    sentence_count = config["sentence_limit"]
     sentence_index = 1
     def_index = 1
-    print("Your input: " + de_capitalised)
-    print("Word translations for " + de_capitalised + " below:")
-    for line in dictionary:
-        if de_capitalised in line:
-            print(str(def_index) + ": " + line)
-            def_index += 1
-    print("Example sentences for " + de_capitalised + " below:")
-    for line in sentences:
-        if de_capitalised in line and sentence_count > 0:
+    print("Your input: " + query.casefold())
+    print("Word translations for " + query.casefold() + " below:")
+    for line in iter_matching_dictionary_lines(query):
+        print(str(def_index) + ": " + line)
+        def_index += 1
+    print("Example sentences for " + query.casefold() + " below:")
+    emitted = set()
+    for i in iter_matching_sentence_indices(query):
+        if sentence_count <= 0:
+            break
+        line = sentences[i]
+        prev_line = sentences[i - 1] if i > 0 else ""
+        if line not in emitted:
             print(str(sentence_index) + ": " + line)
+            emitted.add(line)
+        if prev_line and prev_line not in emitted:
             print(str(sentence_index) + ": " + prev_line)
-            sentence_index += 1
-            sentence_count -= 1
-        prev_line = line
+            emitted.add(prev_line)
+        sentence_index += 1
+        sentence_count -= 1
 
 
 def load_all_sentences(string):
@@ -79,15 +178,23 @@ def load_all_sentences(string):
     :return: returns all of the sentences that are in the sentence file for the string
     """
     load_data()
-    prev_line = ""
+    query = normalize_query(string)
+    if not query:
+        print("No word provided. Please enter a word or phrase.")
+        return
     index = 0
     found_any = False
-    for line in sentences:
-        if string.lower() in line:
+    emitted = set()
+    for i in iter_matching_sentence_indices(query):
+        line = sentences[i]
+        prev_line = sentences[i - 1] if i > 0 else ""
+        if line not in emitted:
             print(str(index) + ": " + line)
+            emitted.add(line)
+        if prev_line and prev_line not in emitted:
             print(str(index) + ": " + prev_line)
-            index += 1
-            found_any = True
-        prev_line = line
+            emitted.add(prev_line)
+        index += 1
+        found_any = True
     if found_any:
-        print('All example sentences for the word ' + string + " have been loaded.")
+        print('All example sentences for the word ' + query + " have been loaded.")

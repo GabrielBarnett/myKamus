@@ -61,6 +61,7 @@ These items have been implemented:
 - A configuration file for paths, keyboard shortcuts, and output limits.
 - Improved sentence selection logic to avoid repeated sentences when multiple adjacent lines match.
 - A command-line entry point and help text (`--help`) for easier launching.
+- Cleaner CLI formatting with wrapped output, labeled sentence pairs, and normalized dictionary spacing.
 
 ## License and contact
 

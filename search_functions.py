@@ -39,6 +39,7 @@ WRAP_WIDTH = 80
 def load_config():
     global _CONFIG
     if _CONFIG is not None:
+        # Reuse the cached configuration once loaded.
         return _CONFIG
     config_path = BASE_DIR / "config.json"
     config = dict(CONFIG_DEFAULTS)
@@ -46,6 +47,7 @@ def load_config():
         with config_path.open(encoding="utf-8") as config_file:
             loaded = json.load(config_file)
         config.update(loaded)
+        # Merge nested config sections so optional keys keep defaults.
         config["hotkeys"] = {**CONFIG_DEFAULTS["hotkeys"], **loaded.get("hotkeys", {})}
         config["gui"] = {**CONFIG_DEFAULTS["gui"], **loaded.get("gui", {})}
     _CONFIG = config
@@ -55,6 +57,7 @@ def load_config():
 def build_index(lines):
     index = defaultdict(list)
     for i, line in enumerate(lines):
+        # Index each unique token in a line to speed up single-word lookups.
         tokens = set(re.findall(r"\b\w+\b", line.casefold()))
         for token in tokens:
             index[token].append(i)
@@ -71,11 +74,13 @@ def load_data():
         dictionary_path = BASE_DIR / config["dictionary_path"]
         with dictionary_path.open(encoding="utf-8") as dic:
             dictionary = dic.readlines()
+        # Precompute token-to-line index for faster single-word searches.
         dictionary_index = build_index(dictionary)
     if sentences is None:
         sentences_path = BASE_DIR / config["sentences_path"]
         with sentences_path.open(encoding="utf-8") as sentences_file:
             sentences = sentences_file.readlines()
+        # Example sentence index mirrors dictionary indexing for quick lookup.
         sentences_index = build_index(sentences)
     return dictionary, sentences
 
@@ -123,6 +128,7 @@ def iter_matching_sentence_indices(query):
             if pattern.search(line):
                 yield i
     else:
+        # For single tokens, rely on the inverted index for speed.
         for i in sentences_index.get(query.casefold(), []):
             yield i
 
@@ -134,6 +140,7 @@ def iter_matching_dictionary_lines(query):
             if pattern.search(line):
                 yield line
     else:
+        # For single tokens, reuse the precomputed dictionary index.
         for i in dictionary_index.get(query.casefold(), []):
             yield dictionary[i]
 
@@ -166,6 +173,7 @@ def search_for_word_data(query, sentence_limit=_DEFAULT_SENTENCE_LIMIT):
         if sentence_limit is not None and sentence_limit <= 0:
             break
         line = sentences[i].strip()
+        # The dataset stores translation lines immediately before the match line.
         prev_line = sentences[i - 1].strip() if i > 0 else ""
         pair_key = (line, prev_line)
         if pair_key in emitted:

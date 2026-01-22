@@ -25,10 +25,33 @@ P. Lison and J. Tiedemann, 2016, OpenSubtitles2016: Extracting Large Parallel Co
 Subtitles. In Proceedings of the 10th International Conference on Language Resources and Evaluation (LREC 2016)
 """
 
+import importlib.util
+import subprocess
+import sys
 import time
+
+
+def ensure_dependencies():
+    missing = []
+    for module_name in ("pyperclip", "keyboard"):
+        if importlib.util.find_spec(module_name) is None:
+            missing.append(module_name)
+    if not missing:
+        return
+    print("Missing dependencies: " + ", ".join(missing))
+    print("Not installing these dependencies will cause the program to not run.")
+    consent = input("Install missing dependencies now? (y/n): ").strip().lower()
+    if consent == "y":
+        subprocess.run([sys.executable, "-m", "pip", "install", *missing], check=False)
+    else:
+        print("Dependencies not installed. The program may not run correctly.")
+
+
+ensure_dependencies()
+
 import pyperclip
-from search_functions import load_all_sentences, load_data, search_for_word_clip
 import keyboard
+from search_functions import load_all_sentences, load_data, search_for_word_clip
 
 print("Welcome to myKamus by Gabriel Barnett\n")
 print("Instructions:\n")

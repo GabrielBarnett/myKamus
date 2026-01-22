@@ -38,7 +38,7 @@ P. Lison and J. Tiedemann, 2016, OpenSubtitles2016: Extracting Large Parallel Co
 
 ## Future fixes and known improvements
 
-These are recommended follow-ups based on identified issues and performance considerations:
+These are future follow-ups based on identified issues and performance considerations:
 
 - Add indexing or caching to avoid scanning the entire dictionary and sentence corpus for each query.
 - Provide a proper search boundary (e.g., word tokenization or regex matching) to reduce false positives.

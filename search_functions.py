@@ -15,6 +15,12 @@ CONFIG_DEFAULTS = {
     "dictionary_path": "en-id_dict.txt",
     "sentences_path": "en-id_sentences.txt",
     "sentence_limit": 4,
+    "gui": {
+        "always_on_top": True,
+        "compact_mode": False,
+        "window_size": "900x700",
+        "window_position": "+100+100",
+    },
     "hotkeys": {
         "manual_search": "ctrl+s",
         "load_all_sentences": "l",
@@ -41,6 +47,7 @@ def load_config():
             loaded = json.load(config_file)
         config.update(loaded)
         config["hotkeys"] = {**CONFIG_DEFAULTS["hotkeys"], **loaded.get("hotkeys", {})}
+        config["gui"] = {**CONFIG_DEFAULTS["gui"], **loaded.get("gui", {})}
     _CONFIG = config
     return config
 
@@ -129,6 +136,52 @@ def iter_matching_dictionary_lines(query):
     else:
         for i in dictionary_index.get(query.casefold(), []):
             yield dictionary[i]
+
+
+_DEFAULT_SENTENCE_LIMIT = object()
+
+
+def search_for_word_data(query, sentence_limit=_DEFAULT_SENTENCE_LIMIT):
+    load_data()
+    cleaned_query = normalize_query(query)
+    result = {
+        "query": cleaned_query,
+        "definitions": [],
+        "sentences": [],
+        "message": None,
+    }
+    if not cleaned_query:
+        result["message"] = "No word provided. Please enter a word or phrase."
+        return result
+    config = load_config()
+    if sentence_limit is _DEFAULT_SENTENCE_LIMIT:
+        sentence_limit = config["sentence_limit"]
+    for line in iter_matching_dictionary_lines(cleaned_query):
+        formatted_line = format_dictionary_line(line)
+        if formatted_line:
+            result["definitions"].append(formatted_line)
+    emitted = set()
+    sentence_index = 1
+    for i in iter_matching_sentence_indices(cleaned_query):
+        if sentence_limit is not None and sentence_limit <= 0:
+            break
+        line = sentences[i].strip()
+        prev_line = sentences[i - 1].strip() if i > 0 else ""
+        pair_key = (line, prev_line)
+        if pair_key in emitted:
+            continue
+        result["sentences"].append(
+            {
+                "index": sentence_index,
+                "match": line,
+                "translation": prev_line,
+            }
+        )
+        emitted.add(pair_key)
+        sentence_index += 1
+        if sentence_limit is not None:
+            sentence_limit -= 1
+    return result
 
 
 def search_for_word():

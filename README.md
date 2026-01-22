@@ -30,6 +30,20 @@ pip install pyperclip keyboard
 4. To search for a specific word, focus the console, press `Ctrl+S`, and enter your term.
 5. To load all example sentences, press `L`. Note: this may return very large results for common words.
 
+### GUI usage (new)
+
+The GUI runs separately from the CLI and uses the same dictionary and sentence files.
+
+```bash
+python -m gui_app.app
+```
+
+GUI highlights:
+
+- Always-on-top toggle and compact mode for quick lookup.
+- Manual search entry with Search and Load all sentences buttons.
+- Clipboard monitoring can be paused/resumed.
+
 ### CLI usage
 
 You can also run a one-off search from the command line:

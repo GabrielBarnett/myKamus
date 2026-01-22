@@ -6,5 +6,11 @@
     "manual_search": "ctrl+s",
     "load_all_sentences": "l"
   },
-  "poll_interval": 0.1
+  "poll_interval": 0.1,
+  "gui": {
+    "always_on_top": true,
+    "compact_mode": false,
+    "window_size": "900x700",
+    "window_position": "+100+100"
+  }
 }

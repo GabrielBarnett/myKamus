@@ -53,6 +53,19 @@ import pyperclip
 import keyboard
 from search_functions import load_all_sentences, load_data, search_for_word_clip
 
+warned_hotkeys = set()
+
+
+def safe_is_pressed(hotkey):
+    try:
+        return keyboard.is_pressed(hotkey)
+    except ValueError as error:
+        if hotkey not in warned_hotkeys:
+            print("Warning: hotkey '" + hotkey + "' could not be read (" + str(error) + ").")
+            print("This may be due to OS-level keyboard limitations or missing permissions.")
+            warned_hotkeys.add(hotkey)
+        return False
+
 print("Welcome to myKamus by Gabriel Barnett\n")
 print("Instructions:\n")
 print("1: Highlight an Indonesian word or short phrase and copy it (ctrl+c)\n"
@@ -72,8 +85,8 @@ l_pressed = False
 
 while True:
     tmp_value = pyperclip.paste()
-    ctrl_s_current = keyboard.is_pressed('ctrl+s')
-    l_current = keyboard.is_pressed('l')
+    ctrl_s_current = safe_is_pressed('ctrl+s')
+    l_current = safe_is_pressed('l')
     if ctrl_s_current and not ctrl_s_pressed:
         print("What word would you like to search for?\n")
         tmp_value = input()

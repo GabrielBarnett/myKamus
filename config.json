@@ -2,15 +2,15 @@
   "dictionary_path": "en-id_dict.txt",
   "sentences_path": "en-id_sentences.txt",
   "sentence_limit": 4,
+  "gui": {
+    "always_on_top": true,
+    "compact_mode": false,
+    "window_size": "700x500",
+    "window_position": "+1087+39"
+  },
   "hotkeys": {
     "manual_search": "ctrl+s",
     "load_all_sentences": "l"
   },
-  "poll_interval": 0.1,
-  "gui": {
-    "always_on_top": true,
-    "compact_mode": false,
-    "window_size": "900x700",
-    "window_position": "+100+100"
-  }
+  "poll_interval": 0.1
 }

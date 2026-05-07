@@ -1,62 +1,41 @@
 """
-myKamus by Gabriel Barnett
-
-myKamus is An open source instant translation software for Indonesian that provides the user
-with complex Indonesian-English translation capabilities.
-
-To run the program you cna either do it from inside an IDE of your choice, or with Python installed either:
-    a) Run clipboard_monitor through IDLE
-    b) Launch a Powershell session through the directory and run clipboard_monitor through it
-
-It utilises several open source bitext corpus to provide access to over 50 million example sentences and words for
-the purposes of translation.
-
-The program is free to use for academic and non-commercial applicaitons, if you wish to use it for something else
-email me at gabrielcbarnett@gmail.com. There will be no cost involved, it is so we can discuss any needs you might have
-for updates, specific vocabulary or language requirements. Again, it will be free but a representative from your
-organisation must make contact with me first.
-
-If you like this program and have found it useful for your work, feel free to email with your success story or any
-improvements that you might suggest.
-
-Bitext corpus for sentences sourced from:
-
-P. Lison and J. Tiedemann, 2016, OpenSubtitles2016: Extracting Large Parallel Corpora from Movie and TV
-Subtitles. In Proceedings of the 10th International Conference on Language Resources and Evaluation (LREC 2016)
+Legacy clipboard monitor for myKamus.
 """
 
-import importlib.util
-import subprocess
+import importlib
 import sys
 import time
 
-
-def ensure_dependencies():
-    missing = []
-    for module_name in ("pyperclip", "keyboard"):
-        if importlib.util.find_spec(module_name) is None:
-            missing.append(module_name)
-    if not missing:
-        return
-    print("Missing dependencies: " + ", ".join(missing))
-    print("Not installing these dependencies will cause the program to not run.")
-    consent = input("Install missing dependencies now? (y/n): ").strip().lower()
-    if consent == "y":
-        subprocess.run([sys.executable, "-m", "pip", "install", *missing], check=False)
-    else:
-        print("Dependencies not installed. The program may not run correctly.")
-
-
-ensure_dependencies()
-
-import pyperclip
-import keyboard
 from search_functions import load_all_sentences, load_config, load_data, search_for_word_clip
 
-warned_hotkeys = set()
+
+def import_runtime_dependency(module_name):
+    try:
+        return importlib.import_module(module_name)
+    except ImportError as error:
+        raise RuntimeError(
+            "Missing dependency '"
+            + module_name
+            + "'. Install dependencies with: pip install -r requirements.txt"
+        ) from error
 
 
-def safe_is_pressed(hotkey):
+def print_instructions():
+    print("Welcome to myKamus by Gabriel Barnett\n")
+    print("Instructions:\n")
+    print(
+        "1: Highlight an Indonesian word or short phrase and copy it (ctrl+c)\n"
+        "2: Watch your translations come up in real time. If there are no sentences "
+        "or word translations, try searching substrings within the Indonesian word "
+        "and ensure there are no surrounding spaces.\n"
+        "3: To search manually, focus the console, press ctrl+s, and type your word "
+        "or phrase.\n"
+        "4: To show every matching example sentence in the console, press l. "
+        "Common words may produce very large output."
+    )
+
+
+def safe_is_pressed(keyboard, hotkey, warned_hotkeys):
     try:
         return keyboard.is_pressed(hotkey)
     except ValueError as error:
@@ -66,41 +45,48 @@ def safe_is_pressed(hotkey):
             warned_hotkeys.add(hotkey)
         return False
 
-print("Welcome to myKamus by Gabriel Barnett\n")
-print("Instructions:\n")
-print("1: Highlight an Indonesian word or short phrase and copy it (ctrl+c)\n"
-      "2: Watch your translations come up in real time, if there are no sentences or word translations then the word may be too unique  \n"
-      "or niche to search. If this happens the recommendation is to search substrings within the Indonesian word itself. Ensure that you\n"
-      "have not copied any spaces around single words or phrases\n"
-      "3: If you would like to search for a specific word click on the console and press ctrl+s and then type in your desired word or phrase.\n"
-      "5: If you wish to show the rest of the example sentences you may press the l key. WARNING: Depending on how common"
-      "or simple the word is doing so may bring back many hundreds of thousands of results.")
 
-config = load_config()
-load_data()
+def main():
+    try:
+        pyperclip = import_runtime_dependency("pyperclip")
+        keyboard = import_runtime_dependency("keyboard")
+    except RuntimeError as error:
+        print(error)
+        return 1
 
-recent_value = pyperclip.paste()
-tmp_value = pyperclip.paste()
-ctrl_s_pressed = False
-l_pressed = False
+    print_instructions()
+    print("\nmyKamus is loading...\n")
 
-manual_search_hotkey = config["hotkeys"]["manual_search"]
-load_all_hotkey = config["hotkeys"]["load_all_sentences"]
-poll_interval = config["poll_interval"]
+    config = load_config()
+    load_data()
 
-while True:
-    tmp_value = pyperclip.paste()
-    ctrl_s_current = safe_is_pressed(manual_search_hotkey)
-    l_current = safe_is_pressed(load_all_hotkey)
-    if ctrl_s_current and not ctrl_s_pressed:
-        print("What word would you like to search for?\n")
-        tmp_value = input()
-        search_for_word_clip(tmp_value)
-    elif l_current and not l_pressed:
-        load_all_sentences(tmp_value)
-    elif tmp_value != recent_value:
-        recent_value = tmp_value
-        search_for_word_clip(recent_value)
-    ctrl_s_pressed = ctrl_s_current
-    l_pressed = l_current
-    time.sleep(poll_interval)
+    recent_value = pyperclip.paste()
+    tmp_value = recent_value
+    ctrl_s_pressed = False
+    l_pressed = False
+    warned_hotkeys = set()
+
+    manual_search_hotkey = config["hotkeys"]["manual_search"]
+    load_all_hotkey = config["hotkeys"]["load_all_sentences"]
+    poll_interval = config["poll_interval"]
+
+    while True:
+        tmp_value = pyperclip.paste()
+        ctrl_s_current = safe_is_pressed(keyboard, manual_search_hotkey, warned_hotkeys)
+        l_current = safe_is_pressed(keyboard, load_all_hotkey, warned_hotkeys)
+        if ctrl_s_current and not ctrl_s_pressed:
+            print("What word would you like to search for?\n")
+            tmp_value = input()
+            search_for_word_clip(tmp_value)
+        elif l_current and not l_pressed:
+            load_all_sentences(tmp_value)
+        elif tmp_value != recent_value:
+            recent_value = tmp_value
+            search_for_word_clip(recent_value)
+        ctrl_s_pressed = ctrl_s_current
+        l_pressed = l_current
+        time.sleep(poll_interval)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

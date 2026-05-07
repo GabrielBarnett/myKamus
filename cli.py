@@ -4,7 +4,7 @@ Command-line interface for myKamus searches.
 
 import argparse
 
-from search_functions import load_all_sentences, load_data, search_for_word_clip
+from search_functions import load_all_sentences, search_for_word_clip
 
 
 def parse_args():
@@ -26,7 +26,6 @@ def parse_args():
 
 def main():
     args = parse_args()
-    load_data()
     if not args.query:
         print("Please provide a word or phrase to search for.")
         return

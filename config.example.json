@@ -1,0 +1,26 @@
+{
+  "dictionary_path": "en-id_dict.txt",
+  "sentences_path": "en-id_sentences.txt",
+  "cache_path": ".mykamus_cache/search.sqlite",
+  "red_book_pdf_path": "indonesiandictionary.pdf",
+  "red_book_cache_path": ".mykamus_cache/red_book.sqlite",
+  "red_book_results_limit": 3,
+  "red_book_enabled": true,
+  "sentence_limit": 4,
+  "gui": {
+    "always_on_top": true,
+    "compact_mode": false,
+    "window_size": "900x700",
+    "window_position": "+100+100",
+    "load_all_sentence_limit": 200,
+    "search_status_delay_ms": 200
+  },
+  "search": {
+    "use_index": true
+  },
+  "hotkeys": {
+    "manual_search": "ctrl+s",
+    "load_all_sentences": "l"
+  },
+  "poll_interval": 0.1
+}

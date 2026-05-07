@@ -13,13 +13,15 @@ It uses open source bitext corpora to provide access to over 50 million example 
 ## Prerequisites
 
 - Python 3.x
-- `pyperclip`
-- `keyboard`
+- Git LFS for the bundled dictionary and sentence corpus
+- Python dependencies in `requirements.txt`
 
 Install dependencies:
 
 ```bash
-pip install pyperclip keyboard
+pip install -r requirements.txt
+git lfs install
+git lfs pull
 ```
 
 ## Usage
@@ -43,6 +45,7 @@ GUI highlights:
 - Always-on-top toggle and compact mode for quick lookup.
 - Manual search entry with Search and Load all sentences buttons.
 - Clipboard monitoring can be paused/resumed.
+- First launch builds local sentence and Red Book indexes with percentage progress; later searches use the indexes for faster results.
 
 ### CLI usage
 
@@ -56,7 +59,9 @@ python cli.py "kata" --all-sentences
 ### Configuration
 
 Runtime settings such as file paths, hotkeys, and the default sentence limit are stored in `config.json`.
-You can update this file to customize keyboard shortcuts or point to different data files.
+Defaults are tracked in `config.example.json`. The GUI writes local window settings to `config.json`, which is ignored by Git.
+You can create or update `config.json` to customize keyboard shortcuts, sentence limits, or data file paths.
+The generated search indexes live in `.mykamus_cache/` and are rebuilt automatically when the sentence corpus or Red Book PDF changes.
 
 ## Data Sources
 
@@ -70,12 +75,20 @@ These are future follow-ups based on identified issues and performance considera
 
 These items have been implemented:
 
-- Indexing/caching to avoid scanning the entire dictionary and sentence corpus for each query.
+- Dictionary indexing plus cached sentence search to avoid loading the full corpus at startup.
 - Proper search boundaries (word tokenization or regex matching) to reduce false positives.
 - A configuration file for paths, keyboard shortcuts, and output limits.
 - Improved sentence selection logic to avoid repeated sentences when multiple adjacent lines match.
 - A command-line entry point and help text (`--help`) for easier launching.
 - Cleaner CLI formatting with wrapped output, labeled sentence pairs, and normalized dictionary spacing.
+- Bidirectional sentence lookup, so Indonesian and English queries return the opposite-language sentence.
+- A capped GUI load-all action to avoid rendering unbounded result sets.
+- A local SQLite sentence index with first-run progress feedback for faster repeated lookup.
+- Red Book headword definitions and example results from `indonesiandictionary.pdf`, indexed separately for whole-word Indonesian lookup.
+
+## Future data bundle
+
+SQLite is the recommended future single-file shipping format for myKamus data. A bundled `mykamus_data.sqlite` can hold dictionary entries, sentence pairs, Red Book headword definitions, Red Book examples, source metadata, and schema versions in one portable artifact.
 
 ## License and contact
 

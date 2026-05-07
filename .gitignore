@@ -1,5 +1,8 @@
+.DS_Store
+.idea/
+__pycache__/
+*.py[cod]
+.mykamus_cache/
 
-en-id_dict.txt
-en-id_dict.txt
-en-id_dict.txt
-en-id_dict.txt
+# Local runtime settings written by the GUI.
+config.json

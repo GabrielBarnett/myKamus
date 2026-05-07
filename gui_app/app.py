@@ -55,11 +55,7 @@ class MyKamusGUI:
         self.gui_config = self.config.get("gui", {})
         self.clipboard_value = pyperclip.paste()
         self.paused = False
-        self.closed = False
-        self.main_ui_ready = False
-        self.polling_started = False
-        self.search_generation = 0
-        self.search_status_after_id = None
+        # Convert seconds to milliseconds for tkinter's scheduling.
         self.poll_interval_ms = int(self.config.get("poll_interval", 0.1) * 1000)
 
         self.root.title("myKamus GUI")
@@ -337,77 +333,17 @@ class MyKamusGUI:
             if current != self.clipboard_value:
                 self.clipboard_value = current
                 self._update_clipboard_label(current)
-                self._run_search(current, origin="clipboard")
+                self._run_search(current)
+        # Schedule the next poll; tkinter uses a single-threaded event loop.
         self.root.after(self.poll_interval_ms, self._poll_clipboard)
 
-    def _run_search(self, query, load_all=False, origin="manual"):
-        sentence_limit = resolve_sentence_limit(
-            self.config,
-            self.compact_mode_var.get(),
-            load_all,
-        )
-        self.search_generation += 1
-        generation = self.search_generation
-        self._schedule_searching_status(generation)
-        thread = threading.Thread(
-            target=self._search_worker,
-            args=(generation, query, sentence_limit, load_all, origin),
-            daemon=True,
-        )
-        thread.start()
-
-    def _schedule_searching_status(self, generation):
-        if self.search_status_after_id is not None:
-            self.root.after_cancel(self.search_status_after_id)
-            self.search_status_after_id = None
-        delay_ms = int(self.gui_config.get("search_status_delay_ms", 200))
-        if delay_ms <= 0:
-            self._show_searching_status(generation)
-            return
-        self.search_status_after_id = self.root.after(
-            delay_ms,
-            lambda: self._show_searching_status(generation),
-        )
-
-    def _show_searching_status(self, generation):
-        if self.closed or generation != self.search_generation:
-            return
-        self.search_status_after_id = None
-        self._set_status("Searching...")
-
-    def _cancel_searching_status(self):
-        if self.search_status_after_id is not None:
-            self.root.after_cancel(self.search_status_after_id)
-            self.search_status_after_id = None
-
-    def _search_worker(self, generation, query, sentence_limit, load_all, origin):
-        try:
-            result = search_for_word_data(query, sentence_limit=sentence_limit)
-            error = None
-        except Exception as exc:  # pragma: no cover - defensive UI boundary
-            result = None
-            error = exc
-
-        def finish():
-            self._finish_search(generation, result, error, load_all, origin)
-
-        try:
-            self.root.after(0, finish)
-        except tk.TclError:
-            pass
-
-    def _finish_search(self, generation, result, error, load_all, origin):
-        if self.closed or generation != self.search_generation:
-            return
-        self._cancel_searching_status()
-        if error is not None:
-            self.results_text.configure(state="normal")
-            self.results_text.delete("1.0", tk.END)
-            self.results_text.insert(tk.END, "Search failed: " + str(error) + "\n")
-            self.results_text.configure(state="disabled")
-            self._set_status("Search failed.")
-            self._restore_search_entry_focus(origin)
-            return
+    def _run_search(self, query, load_all=False):
+        if self.compact_mode_var.get() and not load_all:
+            # Compact mode caps results to keep the UI minimal.
+            sentence_limit = 1
+        else:
+            sentence_limit = None if load_all else self.config.get("sentence_limit")
+        result = search_for_word_data(query, sentence_limit=sentence_limit)
         self._render_results(result, load_all=load_all)
         self._restore_search_entry_focus(origin)
 

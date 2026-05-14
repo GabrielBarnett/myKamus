@@ -1,14 +1,16 @@
 # myKamus
 
-myKamus is an open source, clipboard-driven translation tool for Indonesian that provides English translations plus example sentences from a large bilingual corpus.
+myKamus is an open source Indonesian-English dictionary and example sentence search tool. It combines dictionary entries, indexed bilingual sentence pairs, and Red Book headword definitions in a desktop GUI and CLI.
 
 It uses open source bitext corpora to provide access to over 50 million example sentences and word translations for Indonesian ↔ English.
 
 ## Features
 
-- Watches your clipboard for Indonesian words/phrases and displays translations automatically.
-- Shows example sentences to provide context.
-- Supports manual search (Ctrl+S) and bulk sentence loading (L).
+- Modern PySide6 desktop GUI with manual search, clipboard monitoring, compact mode, recent searches, and always-on-top support.
+- Fast indexed lookup using local SQLite caches in `.mykamus_cache/`.
+- Bidirectional sentence search: Indonesian queries return English translations, and English queries return Indonesian translations.
+- Red Book Results section for whole-word Indonesian headword definitions extracted from `indonesiandictionary.pdf`.
+- CLI search for quick terminal lookups.
 
 ## Prerequisites
 
@@ -16,38 +18,46 @@ It uses open source bitext corpora to provide access to over 50 million example 
 - Git LFS for the bundled dictionary and sentence corpus
 - Python dependencies in `requirements.txt`
 
-Install dependencies:
+Install Git LFS and Python dependencies:
 
 ```bash
+git lfs install
+git lfs pull
 pip install -r requirements.txt
+```
+
+If `git status`, clone, or checkout fails with `git-lfs: command not found`, install Git LFS first. On macOS with Homebrew:
+
+```bash
+brew install git-lfs
 git lfs install
 git lfs pull
 ```
 
-## Usage
+## GUI usage
 
-1. Open `myKamus_initialise.py` in your IDE or run it from the terminal.
-2. Highlight an Indonesian word or short phrase and copy it (`Ctrl+C`).
-3. Watch translations appear in real time. If no results appear, try shorter substrings and ensure there are no leading/trailing spaces.
-4. To search for a specific word, focus the console, press `Ctrl+S`, and enter your term.
-5. To load all example sentences, press `L`. Note: this may return very large results for common words.
-
-### GUI usage (new)
-
-The GUI runs separately from the CLI and uses the same dictionary and sentence files.
+The main app is the PySide6 GUI:
 
 ```bash
 python -m gui_app.app
 ```
 
-GUI highlights:
+On first launch, myKamus builds local SQLite indexes for the sentence corpus and Red Book definitions. The loading screen shows progress as a percentage. Later launches reuse the cache unless the source data changes.
 
-- Always-on-top toggle and compact mode for quick lookup.
-- Manual search entry with Search and Load all sentences buttons.
-- Clipboard monitoring can be paused/resumed.
-- First launch builds local sentence and Red Book indexes with percentage progress; later searches use the indexes for faster results.
+Search workflow:
 
-### CLI usage
+- Type a word or phrase and press Enter or click Search.
+- After a manual search, the search box keeps focus and selects the previous query so you can type the next word immediately.
+- Clipboard monitoring updates results automatically without stealing focus from the search box.
+- Load All is capped by the GUI configuration so common words do not attempt to render an unbounded result set.
+
+Result order:
+
+1. Red Book Results
+2. Word Translations
+3. Example Sentences
+
+## CLI usage
 
 You can also run a one-off search from the command line:
 
@@ -56,12 +66,23 @@ python cli.py "kata"
 python cli.py "kata" --all-sentences
 ```
 
-### Configuration
+## Legacy clipboard launcher
+
+The older console clipboard workflow is still available:
+
+```bash
+python myKamus_initialise.py
+```
+
+The GUI is the recommended runtime path for normal use.
+
+## Configuration
 
 Runtime settings such as file paths, hotkeys, and the default sentence limit are stored in `config.json`.
 Defaults are tracked in `config.example.json`. The GUI writes local window settings to `config.json`, which is ignored by Git.
-You can create or update `config.json` to customize keyboard shortcuts, sentence limits, or data file paths.
-The generated search indexes live in `.mykamus_cache/` and are rebuilt automatically when the sentence corpus or Red Book PDF changes.
+You can create or update `config.json` to customize keyboard shortcuts, sentence limits, cache paths, Red Book indexing, or data file paths.
+
+Generated search indexes live in `.mykamus_cache/` and are rebuilt automatically when the sentence corpus or Red Book PDF changes. They are local runtime data and should not be committed.
 
 ## Data Sources
 
@@ -69,11 +90,9 @@ Bitext corpus for sentences sourced from:
 
 P. Lison and J. Tiedemann, 2016, OpenSubtitles2016: Extracting Large Parallel Corpora from Movie and TV Subtitles. In Proceedings of the 10th International Conference on Language Resources and Evaluation (LREC 2016)
 
-## Future fixes and known improvements
+Red Book definitions are extracted from `indonesiandictionary.pdf` when the file is present. Only Indonesian headwords are indexed for Red Book matching; example sentences from the PDF are intentionally not stored.
 
-These are future follow-ups based on identified issues and performance considerations:
-
-These items have been implemented:
+## Implemented improvements
 
 - Dictionary indexing plus cached sentence search to avoid loading the full corpus at startup.
 - Proper search boundaries (word tokenization or regex matching) to reduce false positives.
@@ -84,11 +103,20 @@ These items have been implemented:
 - Bidirectional sentence lookup, so Indonesian and English queries return the opposite-language sentence.
 - A capped GUI load-all action to avoid rendering unbounded result sets.
 - A local SQLite sentence index with first-run progress feedback for faster repeated lookup.
-- Red Book headword definitions and example results from `indonesiandictionary.pdf`, indexed separately for whole-word Indonesian lookup.
+- Red Book headword definitions from `indonesiandictionary.pdf`, indexed separately for whole-word Indonesian lookup.
+- A PySide6 GUI redesign with responsive layout, clear colors, search history, and background worker threads.
 
 ## Future data bundle
 
-SQLite is the recommended future single-file shipping format for myKamus data. A bundled `mykamus_data.sqlite` can hold dictionary entries, sentence pairs, Red Book headword definitions, Red Book examples, source metadata, and schema versions in one portable artifact.
+SQLite is the recommended future single-file shipping format for myKamus data. A bundled `mykamus_data.sqlite` can hold dictionary entries, sentence pairs, Red Book headword definitions, source metadata, and schema versions in one portable artifact.
+
+## Testing
+
+Run the test suite with bytecode disabled to avoid dirtying tracked cache files:
+
+```bash
+QT_QPA_PLATFORM=offscreen PYTHONDONTWRITEBYTECODE=1 python -B -m unittest discover -s tests
+```
 
 ## License and contact
 

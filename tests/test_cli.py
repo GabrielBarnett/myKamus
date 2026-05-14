@@ -112,13 +112,12 @@ class CliTests(unittest.TestCase):
                 conn,
                 red_book_index.source_metadata(self.red_book_pdf_path),
             )
-            red_book_index._insert_batch(
+            red_book_index._insert_entry_batch(
                 conn,
                 [
                     {
                         "headword": "mengatakan",
-                        "indonesian": "Saya mengatakan hal itu.",
-                        "english": "I said that.",
+                        "definition": "1 to say s.t. 2 to tell, inform, assert, mention.",
                         "page": 475,
                     }
                 ],
@@ -132,10 +131,12 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode)
         self.assertIn("Red Book Results:", result.stdout)
-        self.assertIn("Indonesian: Saya mengatakan hal itu.", result.stdout)
-        self.assertIn("English: I said that.", result.stdout)
+        self.assertIn(
+            "Definition: 1 to say s.t. 2 to tell, inform, assert, mention.",
+            result.stdout,
+        )
 
-    def test_cli_prints_exact_red_book_definition_before_general_examples(self):
+    def test_cli_does_not_print_red_book_sentence_examples(self):
         conn = red_book_index._connect(self.red_book_cache_path)
         try:
             red_book_index._create_schema(conn)
@@ -154,18 +155,6 @@ class CliTests(unittest.TestCase):
                 ],
                 1,
             )
-            red_book_index._insert_batch(
-                conn,
-                [
-                    {
-                        "headword": "coba",
-                        "indonesian": "Ia mengatakan sesuatu.",
-                        "english": "He said something.",
-                        "page": 21,
-                    }
-                ],
-                1,
-            )
             conn.commit()
         finally:
             conn.close()
@@ -178,6 +167,7 @@ class CliTests(unittest.TestCase):
             result.stdout,
         )
         self.assertNotIn("Indonesian: Ia mengatakan sesuatu.", result.stdout)
+        self.assertNotIn("English: He said something.", result.stdout)
 
 
 if __name__ == "__main__":

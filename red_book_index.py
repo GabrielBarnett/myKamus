@@ -1,5 +1,5 @@
 """
-SQLite-backed index for entries and examples extracted from the Red Book PDF.
+SQLite-backed index for definitions extracted from the Red Book PDF.
 """
 
 from pathlib import Path
@@ -8,7 +8,7 @@ import re
 import sqlite3
 
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 FIRST_ENTRY_PAGE = 21
 LAST_ENTRY_PAGE = 1123
 ENTRY_START_MAX_X = 58
@@ -59,22 +59,6 @@ def _create_schema(conn):
             value TEXT NOT NULL
         );
 
-        CREATE TABLE red_book_examples (
-            id INTEGER PRIMARY KEY,
-            headword TEXT NOT NULL,
-            headword_normalized TEXT NOT NULL,
-            indonesian TEXT NOT NULL,
-            indonesian_normalized TEXT NOT NULL,
-            english TEXT NOT NULL,
-            page INTEGER NOT NULL,
-            position INTEGER NOT NULL
-        );
-
-        CREATE TABLE red_book_headword_terms (
-            term TEXT NOT NULL,
-            example_id INTEGER NOT NULL REFERENCES red_book_examples(id)
-        );
-
         CREATE TABLE red_book_entries (
             id INTEGER PRIMARY KEY,
             headword TEXT NOT NULL,
@@ -89,10 +73,6 @@ def _create_schema(conn):
             entry_id INTEGER NOT NULL REFERENCES red_book_entries(id)
         );
 
-        CREATE INDEX red_book_headword_term_idx
-            ON red_book_headword_terms(term, example_id);
-        CREATE INDEX red_book_examples_position_idx
-            ON red_book_examples(position);
         CREATE INDEX red_book_entry_term_idx
             ON red_book_entry_terms(term, entry_id);
         CREATE INDEX red_book_entries_position_idx
@@ -125,14 +105,6 @@ def normalize_lookup_text(text):
     return text
 
 
-def _whole_word_pattern(query):
-    normalized = normalize_lookup_text(query)
-    return re.compile(
-        rf"(?<![\w'\-\u2019]){re.escape(normalized)}(?![\w'\-\u2019])",
-        re.IGNORECASE,
-    )
-
-
 def _clean_chunk_text(text):
     return normalize_pdf_text(text)
 
@@ -147,10 +119,6 @@ def _is_italic_font(font_name):
 
 def _is_word_like(text):
     return bool(re.search(r"[A-Za-zÀ-ž]", text))
-
-
-def _is_roman_marker(text):
-    return bool(re.fullmatch(r"[IVXLCDM]+/?", text))
 
 
 def _is_entry_start_line(chunks):
@@ -242,14 +210,6 @@ def _chunks_to_text(chunks):
     return normalize_pdf_text(" ".join(chunk["text"] for chunk in chunks))
 
 
-def _replace_tilde(indonesian, headword):
-    terms = headword_terms(headword)
-    if not terms:
-        return indonesian
-    display_term = terms[0]
-    return indonesian.replace("~", display_term)
-
-
 def _looks_like_indonesian_example(text):
     if not _is_word_like(text):
         return False
@@ -258,61 +218,6 @@ def _looks_like_indonesian_example(text):
     if re.fullmatch(r"[A-Za-z]{1,4}", text):
         return False
     return len(re.findall(r"[A-Za-zÀ-ž]+", text)) >= 2
-
-
-def _looks_like_english_translation(text):
-    if not _is_word_like(text):
-        return False
-    if len(text) < 6:
-        return False
-    return len(re.findall(r"[A-Za-zÀ-ž]+", text)) >= 2
-
-
-def extract_examples_from_entry(entry):
-    chunks = entry["chunks"]
-    examples = []
-    index = 0
-    while index < len(chunks):
-        chunk = chunks[index]
-        if not chunk["italic"] or chunk["bold"]:
-            index += 1
-            continue
-
-        indonesian_chunks = []
-        while index < len(chunks):
-            current = chunks[index]
-            if current["italic"] and not current["bold"]:
-                indonesian_chunks.append(current)
-                index += 1
-                continue
-            if current["text"] in {".", ",", ";", ":", "?", "!", "-", "–"}:
-                indonesian_chunks.append(current)
-                index += 1
-                continue
-            break
-
-        english_chunks = []
-        while index < len(chunks):
-            current = chunks[index]
-            if current["italic"]:
-                break
-            if current["bold"] and _is_word_like(current["text"]):
-                break
-            english_chunks.append(current)
-            index += 1
-
-        indonesian = _replace_tilde(_chunks_to_text(indonesian_chunks), entry["headword"])
-        english = _chunks_to_text(english_chunks)
-        if _looks_like_indonesian_example(indonesian) and _looks_like_english_translation(english):
-            examples.append(
-                {
-                    "headword": entry["headword"],
-                    "indonesian": indonesian,
-                    "english": english,
-                    "page": entry["page"],
-                }
-            )
-    return examples
 
 
 def extract_entries_from_lines(lines):
@@ -335,15 +240,6 @@ def extract_entries_from_lines(lines):
         entries.append(current_entry)
 
     return entries
-
-
-def extract_examples_from_lines(lines):
-    entries = extract_entries_from_lines(lines)
-
-    examples = []
-    for entry in entries:
-        examples.extend(extract_examples_from_entry(entry))
-    return examples
 
 
 def _strip_initial_variant_note(text):
@@ -414,7 +310,7 @@ def _extract_page_chunks(page, page_number):
     return chunks
 
 
-def _iter_pdf_page_records(pdf_path, progress_callback=None):
+def _iter_pdf_definitions(pdf_path, progress_callback=None):
     try:
         from pypdf import PdfReader
     except ImportError as error:
@@ -430,22 +326,10 @@ def _iter_pdf_page_records(pdf_path, progress_callback=None):
     for index, page_number in enumerate(range(first_page, last_page + 1), start=1):
         page = reader.pages[page_number - 1]
         lines = order_pdf_chunks(_extract_page_chunks(page, page_number))
-        entries = extract_entries_from_lines(lines)
-        yield {
-            "definitions": [
-                definition
-                for definition in (
-                    extract_definition_from_entry(entry)
-                    for entry in entries
-                )
-                if definition is not None
-            ],
-            "examples": [
-                example
-                for entry in entries
-                for example in extract_examples_from_entry(entry)
-            ],
-        }
+        for entry in extract_entries_from_lines(lines):
+            definition = extract_definition_from_entry(entry)
+            if definition is not None:
+                yield definition
         if progress_callback is not None:
             progress_callback(
                 {
@@ -455,52 +339,6 @@ def _iter_pdf_page_records(pdf_path, progress_callback=None):
                     "complete": index >= total_pages,
                 }
             )
-
-
-def _iter_pdf_examples(pdf_path, progress_callback=None):
-    for records in _iter_pdf_page_records(pdf_path, progress_callback=progress_callback):
-        yield from records["examples"]
-
-
-def _insert_batch(conn, batch, start_position):
-    if not batch:
-        return
-    rows = [
-        (
-            example["headword"],
-            normalize_lookup_text(example["headword"]),
-            example["indonesian"],
-            normalize_lookup_text(example["indonesian"]),
-            example["english"],
-            int(example["page"]),
-            start_position + offset,
-        )
-        for offset, example in enumerate(batch)
-    ]
-    conn.executemany(
-        """
-        INSERT INTO red_book_examples(
-            headword,
-            headword_normalized,
-            indonesian,
-            indonesian_normalized,
-            english,
-            page,
-            position
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        rows,
-    )
-    first_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0] - len(batch) + 1
-    term_rows = []
-    for offset, example in enumerate(batch):
-        for term in headword_terms(example["headword"]):
-            term_rows.append((term, first_id + offset))
-    conn.executemany(
-        "INSERT INTO red_book_headword_terms(term, example_id) VALUES (?, ?)",
-        term_rows,
-    )
 
 
 def _insert_entry_batch(conn, batch, start_position):
@@ -552,28 +390,19 @@ def build_red_book_index(pdf_path, cache_path, progress_callback=None):
         temp_path.unlink()
 
     conn = _connect(temp_path)
-    example_batch = []
     entry_batch = []
-    example_position = 1
     entry_position = 1
     try:
         _create_schema(conn)
         _write_metadata(conn, source_metadata(pdf_path))
-        for records in _iter_pdf_page_records(pdf_path, progress_callback=progress_callback):
-            entry_batch.extend(records["definitions"])
-            example_batch.extend(records["examples"])
+        for definition in _iter_pdf_definitions(pdf_path, progress_callback=progress_callback):
+            entry_batch.append(definition)
             if len(entry_batch) >= 1000:
                 _insert_entry_batch(conn, entry_batch, entry_position)
                 entry_position += len(entry_batch)
                 entry_batch.clear()
-            if len(example_batch) >= 1000:
-                _insert_batch(conn, example_batch, example_position)
-                example_position += len(example_batch)
-                example_batch.clear()
         if entry_batch:
             _insert_entry_batch(conn, entry_batch, entry_position)
-        if example_batch:
-            _insert_batch(conn, example_batch, example_position)
         conn.commit()
     except Exception:
         conn.close()
@@ -618,26 +447,6 @@ def ensure_red_book_index(pdf_path, cache_path, progress_callback=None):
             )
         return {"cache_path": str(cache_path), "rebuilt": False, "skipped": False}
     return build_red_book_index(pdf_path, cache_path, progress_callback=progress_callback)
-
-
-def _select_examples(conn, sql, params, limit, seen):
-    results = []
-    for row in conn.execute(sql, params):
-        example_id, headword, indonesian, english, page = row
-        if example_id in seen:
-            continue
-        seen.add(example_id)
-        results.append(
-            {
-                "headword": headword,
-                "indonesian": indonesian,
-                "english": english,
-                "page": page,
-            }
-        )
-        if len(results) >= limit:
-            break
-    return results
 
 
 def _select_definitions(conn, sql, params, limit, seen):
@@ -686,64 +495,3 @@ def search_red_book_definitions(query, limit, pdf_path, cache_path):
         )
     finally:
         conn.close()
-
-
-def search_red_book_examples(query, limit, pdf_path, cache_path, include_general=True):
-    if limit is None:
-        limit = 3
-    if limit is not None and limit <= 0:
-        return []
-    if not is_red_book_index_valid(pdf_path, cache_path):
-        raise RedBookUnavailableError("Red Book index is missing or stale.")
-
-    normalized_query = normalize_lookup_text(query)
-    pattern = _whole_word_pattern(normalized_query)
-    results = []
-    seen = set()
-    conn = _connect(cache_path)
-    try:
-        exact_results = _select_examples(
-            conn,
-            """
-            SELECT e.id, e.headword, e.indonesian, e.english, e.page
-            FROM red_book_examples e
-            JOIN red_book_headword_terms t ON t.example_id = e.id
-            WHERE t.term = ?
-            ORDER BY e.position
-            """,
-            (normalized_query,),
-            limit,
-            seen,
-        )
-        results.extend(exact_results)
-        remaining = limit - len(results)
-        if remaining <= 0 or not include_general:
-            return results
-
-        like_query = "%" + normalized_query.replace("%", "\\%").replace("_", "\\_") + "%"
-        for row in conn.execute(
-            """
-            SELECT id, headword, indonesian, english, page, indonesian_normalized
-            FROM red_book_examples
-            WHERE indonesian_normalized LIKE ? ESCAPE '\\'
-            ORDER BY position
-            """,
-            (like_query,),
-        ):
-            example_id, headword, indonesian, english, page, indonesian_normalized = row
-            if example_id in seen or not pattern.search(indonesian_normalized):
-                continue
-            seen.add(example_id)
-            results.append(
-                {
-                    "headword": headword,
-                    "indonesian": indonesian,
-                    "english": english,
-                    "page": page,
-                }
-            )
-            if len(results) >= limit:
-                break
-    finally:
-        conn.close()
-    return results

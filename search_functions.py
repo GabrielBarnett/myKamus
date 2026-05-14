@@ -71,17 +71,13 @@ def _config_paths():
 def load_config():
     global _CONFIG
     if _CONFIG is not None:
-        # Reuse the cached configuration once loaded.
         return _CONFIG
-    config_path = BASE_DIR / "config.json"
-    config = dict(CONFIG_DEFAULTS)
-    if config_path.exists():
-        with config_path.open(encoding="utf-8") as config_file:
-            loaded = json.load(config_file)
-        config.update(loaded)
-        # Merge nested config sections so optional keys keep defaults.
-        config["hotkeys"] = {**CONFIG_DEFAULTS["hotkeys"], **loaded.get("hotkeys", {})}
-        config["gui"] = {**CONFIG_DEFAULTS["gui"], **loaded.get("gui", {})}
+
+    config = copy.deepcopy(CONFIG_DEFAULTS)
+    for config_path in _config_paths():
+        if config_path.exists():
+            with config_path.open(encoding="utf-8") as config_file:
+                config = _deep_update(config, json.load(config_file))
     _CONFIG = config
     return config
 
@@ -155,7 +151,6 @@ def ensure_red_book_index(progress_callback=None):
 def build_index(lines):
     index = defaultdict(list)
     for i, line in enumerate(lines):
-        # Index each unique token in a line to speed up single-word lookups.
         tokens = set(re.findall(r"\b\w+\b", line.casefold()))
         for token in tokens:
             index[token].append(i)
@@ -169,15 +164,19 @@ def load_dictionary():
     if dictionary is None:
         with data_path("dictionary_path").open(encoding="utf-8") as dic:
             dictionary = dic.readlines()
-        # Precompute token-to-line index for faster single-word searches.
         dictionary_index = build_index(dictionary)
-    if sentences is None:
-        sentences_path = BASE_DIR / config["sentences_path"]
-        with sentences_path.open(encoding="utf-8") as sentences_file:
-            sentences = sentences_file.readlines()
-        # Example sentence index mirrors dictionary indexing for quick lookup.
-        sentences_index = build_index(sentences)
-    return dictionary, sentences
+    return dictionary
+
+
+def load_data():
+    """
+    Backward-compatible loader.
+
+    The dictionary is small enough to keep indexed in memory. The sentence
+    corpus is deliberately streamed per search so app startup does not load the
+    full 711 MB file.
+    """
+    return load_dictionary(), None
 
 
 def normalize_query(string):
@@ -225,16 +224,85 @@ def format_sentence_block(index, match_line, translation_line):
     return "\n".join(lines)
 
 
-def iter_matching_sentence_indices(query):
-    if " " in query:
-        pattern = build_phrase_pattern(query)
-        for i, line in enumerate(sentences):
-            if pattern.search(line):
-                yield i
-    else:
-        # For single tokens, rely on the inverted index for speed.
-        for i in sentences_index.get(query.casefold(), []):
-            yield i
+def format_red_book_definition_block(index, result):
+    lines = [f"{index}:"]
+    if result.get("headword"):
+        lines.append(format_labeled_line("Headword:", result["headword"]))
+    lines.append(format_labeled_line("Definition:", result["definition"]))
+    if result.get("page"):
+        lines.append(format_labeled_line("Page:", str(result["page"])))
+    return "\n".join(lines)
+
+
+def _iter_non_empty_sentence_lines():
+    with data_path("sentences_path").open(encoding="utf-8", errors="replace") as sentences_file:
+        for line in sentences_file:
+            cleaned = " ".join(line.strip().split())
+            if cleaned:
+                yield cleaned
+
+
+def iter_sentence_pairs():
+    pending_english = None
+    for line in _iter_non_empty_sentence_lines():
+        if pending_english is None:
+            pending_english = line
+        else:
+            yield {
+                "english": pending_english,
+                "indonesian": line,
+            }
+            pending_english = None
+
+
+def iter_matching_sentence_pairs(query):
+    matcher = build_query_matcher(query)
+    for pair in iter_sentence_pairs():
+        english = pair["english"]
+        indonesian = pair["indonesian"]
+        english_matches = matcher(english)
+        indonesian_matches = matcher(indonesian)
+        if not english_matches and not indonesian_matches:
+            continue
+
+        if indonesian_matches:
+            yield {
+                "match": indonesian,
+                "translation": english,
+                "matched_language": "indonesian",
+                "english": english,
+                "indonesian": indonesian,
+            }
+        else:
+            yield {
+                "match": english,
+                "translation": indonesian,
+                "matched_language": "english",
+                "english": english,
+                "indonesian": indonesian,
+            }
+
+
+def iter_matching_indexed_sentence_pairs(query, limit):
+    yield from search_index.search_sentence_index(
+        query,
+        limit,
+        sentences_path(),
+        cache_path(),
+    )
+
+
+def search_matching_red_book_definitions(query, limit):
+    if not should_index_red_book():
+        return []
+    if not red_book_index.is_red_book_index_valid(red_book_pdf_path(), red_book_cache_path()):
+        return []
+    return red_book_index.search_red_book_definitions(
+        query,
+        limit,
+        red_book_pdf_path(),
+        red_book_cache_path(),
+    )
 
 
 def iter_matching_dictionary_lines(query):
@@ -245,7 +313,6 @@ def iter_matching_dictionary_lines(query):
             if pattern.search(line):
                 yield line
     else:
-        # For single tokens, reuse the precomputed dictionary index.
         for i in dictionary_index.get(query.casefold(), []):
             yield dictionary[i]
 
@@ -293,26 +360,26 @@ def search_for_word_data(query, sentence_limit=_DEFAULT_SENTENCE_LIMIT):
                 cleaned_query,
                 red_book_limit,
             )
-            result["red_book_results"] = search_matching_red_book_examples(
-                cleaned_query,
-                red_book_limit,
-                include_general=not result["red_book_definitions"],
-            )
         except red_book_index.RedBookUnavailableError:
             result["red_book_definitions"] = []
-            result["red_book_results"] = []
         except Exception:
             result["red_book_definitions"] = []
-            result["red_book_results"] = []
 
     sentence_index = 1
-    for i in iter_matching_sentence_indices(cleaned_query):
-        if sentence_limit is not None and sentence_limit <= 0:
-            break
-        line = sentences[i].strip()
-        # The dataset stores translation lines immediately before the match line.
-        prev_line = sentences[i - 1].strip() if i > 0 else ""
-        pair_key = (line, prev_line)
+    search_limit = None if sentence_limit is None else sentence_limit + 1
+    sentence_iter = iter_matching_sentence_pairs(cleaned_query)
+    if config.get("search", {}).get("use_index", True):
+        try:
+            if is_sentence_index_valid():
+                sentence_iter = iter_matching_indexed_sentence_pairs(cleaned_query, search_limit)
+        except search_index.IndexUnavailableError:
+            sentence_iter = iter_matching_sentence_pairs(cleaned_query)
+        except Exception:
+            sentence_iter = iter_matching_sentence_pairs(cleaned_query)
+
+    emitted = set()
+    for sentence in sentence_iter:
+        pair_key = (sentence["english"], sentence["indonesian"])
         if pair_key in emitted:
             continue
         if sentence_limit is not None and len(result["sentences"]) >= sentence_limit:
@@ -346,19 +413,14 @@ def render_search_result(result):
     else:
         lines.append("No dictionary entries found.")
 
-    if result.get("red_book_definitions") or result.get("red_book_results"):
+    if result.get("red_book_definitions"):
         lines.append("")
         lines.append("Red Book Results:")
-        next_index = 1
         for index, red_book_definition in enumerate(
             result.get("red_book_definitions", []),
-            start=next_index,
+            start=1,
         ):
             lines.append(format_red_book_definition_block(index, red_book_definition))
-            lines.append("")
-            next_index = index + 1
-        for index, red_book_result in enumerate(result["red_book_results"], start=next_index):
-            lines.append(format_red_book_block(index, red_book_result))
             lines.append("")
 
     lines.append("Example sentences for " + result["query"].casefold() + " below:")

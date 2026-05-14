@@ -131,6 +131,80 @@ class PreflightDetectionTests(unittest.TestCase):
         self.assertTrue(any("Some Python packages are still missing" in message for message in messages))
         self.assertTrue(any("- PySide6" in message for message in messages))
 
+    def test_ensure_data_files_returns_true_when_files_exist(self):
+        with mock.patch.object(preflight, "missing_data_files", return_value=[]):
+            result = preflight.ensure_data_files(
+                input_func=lambda _question: "n",
+                output_func=lambda _message: None,
+            )
+
+        self.assertTrue(result)
+
+    def test_ensure_data_files_fails_when_git_is_unavailable(self):
+        messages = []
+
+        with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_sentences.txt"]), \
+                mock.patch.object(preflight, "command_exists", return_value=False):
+            result = preflight.ensure_data_files(
+                input_func=lambda _question: "n",
+                output_func=messages.append,
+            )
+
+        self.assertFalse(result)
+        self.assertTrue(any("Git and Git LFS are needed" in message for message in messages))
+
+    def test_ensure_data_files_runs_git_lfs_pull_when_user_approves(self):
+        messages = []
+        commands = []
+        missing_results = [["en-id_sentences.txt"], []]
+
+        with mock.patch.object(
+            preflight,
+            "missing_data_files",
+            side_effect=lambda: missing_results.pop(0),
+        ), \
+                mock.patch.object(preflight, "command_exists", return_value=True), \
+                mock.patch.object(
+                    preflight,
+                    "run_command",
+                    side_effect=lambda command: commands.append(command) or True,
+                ):
+            result = preflight.ensure_data_files(
+                input_func=lambda _question: "y",
+                output_func=messages.append,
+            )
+
+        self.assertTrue(result)
+        self.assertEqual([["git", "lfs", "pull"]], commands)
+        self.assertTrue(any("large data files" in message for message in messages))
+
+    def test_ensure_data_files_fails_when_files_remain_missing_after_git_lfs(self):
+        messages = []
+
+        with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_sentences.txt"]), \
+                mock.patch.object(preflight, "command_exists", return_value=True), \
+                mock.patch.object(preflight, "run_command", return_value=True):
+            result = preflight.ensure_data_files(
+                input_func=lambda _question: "y",
+                output_func=messages.append,
+            )
+
+        self.assertFalse(result)
+        self.assertTrue(any("still missing" in message for message in messages))
+
+    def test_ensure_data_files_fails_when_user_declines_git_lfs(self):
+        messages = []
+
+        with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_sentences.txt"]), \
+                mock.patch.object(preflight, "command_exists", return_value=True):
+            result = preflight.ensure_data_files(
+                input_func=lambda _question: "n",
+                output_func=messages.append,
+            )
+
+        self.assertFalse(result)
+        self.assertTrue(any("Cannot start until these data files are present" in message for message in messages))
+
 
 if __name__ == "__main__":
     unittest.main()

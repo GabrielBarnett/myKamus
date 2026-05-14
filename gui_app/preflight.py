@@ -107,6 +107,45 @@ def ensure_dependencies(input_func=input, output_func=print):
     return True
 
 
+def ensure_data_files(input_func=input, output_func=print):
+    missing = missing_data_files()
+    if not missing:
+        return True
+
+    output_func("myKamus needs these local data files before it can start:")
+    for file_name in missing:
+        output_func("- " + file_name)
+    output_func("")
+    output_func(
+        "The large data files may not have downloaded. This project uses Git LFS for large files."
+    )
+
+    if not command_exists("git"):
+        output_func("Git and Git LFS are needed to fetch the bundled data files.")
+        return False
+
+    if not prompt_yes_no(
+        "Try downloading the data files with git lfs pull?",
+        input_func=input_func,
+        output_func=output_func,
+    ):
+        output_func("Cannot start until these data files are present.")
+        return False
+
+    if not run_command(["git", "lfs", "pull"]):
+        output_func("git lfs pull failed.")
+        return False
+
+    still_missing = missing_data_files()
+    if still_missing:
+        output_func("These data files are still missing:")
+        for file_name in still_missing:
+            output_func("- " + file_name)
+        return False
+
+    return True
+
+
 def main():
     return 0
 

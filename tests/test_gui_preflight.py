@@ -225,6 +225,36 @@ class PreflightDetectionTests(unittest.TestCase):
         run_command.assert_not_called()
         self.assertTrue(any("Cannot start until these data files are present" in message for message in messages))
 
+    def test_main_returns_zero_when_dependencies_and_data_are_ready(self):
+        with mock.patch.object(preflight, "ensure_dependencies", return_value=True), \
+                mock.patch.object(preflight, "ensure_data_files", return_value=True):
+            result = preflight.main(
+                input_func=lambda _question: "n",
+                output_func=lambda _message: None,
+            )
+
+        self.assertEqual(0, result)
+
+    def test_main_returns_one_when_dependencies_are_not_ready(self):
+        with mock.patch.object(preflight, "ensure_dependencies", return_value=False), \
+                mock.patch.object(preflight, "ensure_data_files", return_value=True):
+            result = preflight.main(
+                input_func=lambda _question: "n",
+                output_func=lambda _message: None,
+            )
+
+        self.assertEqual(1, result)
+
+    def test_main_returns_one_when_data_files_are_not_ready(self):
+        with mock.patch.object(preflight, "ensure_dependencies", return_value=True), \
+                mock.patch.object(preflight, "ensure_data_files", return_value=False):
+            result = preflight.main(
+                input_func=lambda _question: "n",
+                output_func=lambda _message: None,
+            )
+
+        self.assertEqual(1, result)
+
 
 if __name__ == "__main__":
     unittest.main()

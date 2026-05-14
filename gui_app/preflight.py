@@ -157,7 +157,11 @@ def ensure_data_files(input_func=input, output_func=print):
     return True
 
 
-def main():
+def main(input_func=input, output_func=print):
+    if not ensure_dependencies(input_func=input_func, output_func=output_func):
+        return 1
+    if not ensure_data_files(input_func=input_func, output_func=output_func):
+        return 1
     return 0
 
 

@@ -3,6 +3,7 @@
 __pycache__/
 *.py[cod]
 .mykamus_cache/
+.worktrees/
 
 # Local runtime settings written by the GUI.
 config.json

@@ -226,34 +226,49 @@ class PreflightDetectionTests(unittest.TestCase):
         self.assertTrue(any("Cannot start until these data files are present" in message for message in messages))
 
     def test_main_returns_zero_when_dependencies_and_data_are_ready(self):
-        with mock.patch.object(preflight, "ensure_dependencies", return_value=True), \
-                mock.patch.object(preflight, "ensure_data_files", return_value=True):
+        input_func = mock.Mock(return_value="n")
+        output_func = mock.Mock()
+
+        with mock.patch.object(preflight, "ensure_dependencies", return_value=True) as ensure_dependencies, \
+                mock.patch.object(preflight, "ensure_data_files", return_value=True) as ensure_data_files:
             result = preflight.main(
-                input_func=lambda _question: "n",
-                output_func=lambda _message: None,
+                input_func=input_func,
+                output_func=output_func,
             )
 
         self.assertEqual(0, result)
+        ensure_dependencies.assert_called_once_with(input_func=input_func, output_func=output_func)
+        ensure_data_files.assert_called_once_with(input_func=input_func, output_func=output_func)
 
     def test_main_returns_one_when_dependencies_are_not_ready(self):
-        with mock.patch.object(preflight, "ensure_dependencies", return_value=False), \
-                mock.patch.object(preflight, "ensure_data_files", return_value=True):
+        input_func = mock.Mock(return_value="n")
+        output_func = mock.Mock()
+
+        with mock.patch.object(preflight, "ensure_dependencies", return_value=False) as ensure_dependencies, \
+                mock.patch.object(preflight, "ensure_data_files", return_value=True) as ensure_data_files:
             result = preflight.main(
-                input_func=lambda _question: "n",
-                output_func=lambda _message: None,
+                input_func=input_func,
+                output_func=output_func,
             )
 
         self.assertEqual(1, result)
+        ensure_dependencies.assert_called_once_with(input_func=input_func, output_func=output_func)
+        ensure_data_files.assert_not_called()
 
     def test_main_returns_one_when_data_files_are_not_ready(self):
-        with mock.patch.object(preflight, "ensure_dependencies", return_value=True), \
-                mock.patch.object(preflight, "ensure_data_files", return_value=False):
+        input_func = mock.Mock(return_value="n")
+        output_func = mock.Mock()
+
+        with mock.patch.object(preflight, "ensure_dependencies", return_value=True) as ensure_dependencies, \
+                mock.patch.object(preflight, "ensure_data_files", return_value=False) as ensure_data_files:
             result = preflight.main(
-                input_func=lambda _question: "n",
-                output_func=lambda _message: None,
+                input_func=input_func,
+                output_func=output_func,
             )
 
         self.assertEqual(1, result)
+        ensure_dependencies.assert_called_once_with(input_func=input_func, output_func=output_func)
+        ensure_data_files.assert_called_once_with(input_func=input_func, output_func=output_func)
 
 
 if __name__ == "__main__":

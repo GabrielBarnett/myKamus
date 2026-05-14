@@ -64,6 +64,49 @@ def prompt_yes_no(question, input_func=input, output_func=print):
         output_func("Please answer Y or N.")
 
 
+def ensure_dependencies(input_func=input, output_func=print):
+    requirements = read_requirements()
+    missing = missing_dependency_imports(requirements)
+    if not missing:
+        return True
+
+    output_func("myKamus needs a few Python packages before it can start:")
+    for package_name in missing:
+        output_func("- " + package_name)
+    output_func("")
+
+    if not prompt_yes_no(
+        "Install them now using requirements.txt?",
+        input_func=input_func,
+        output_func=output_func,
+    ):
+        output_func(
+            "You can install them later with: python -m pip install -r requirements.txt"
+        )
+        return False
+
+    install_command = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "-r",
+        str(REQUIREMENTS_PATH),
+    ]
+    if not run_command(install_command):
+        output_func("Dependency installation failed.")
+        return False
+
+    still_missing = missing_dependency_imports(requirements)
+    if still_missing:
+        output_func("Some Python packages are still missing:")
+        for package_name in still_missing:
+            output_func("- " + package_name)
+        return False
+
+    return True
+
+
 def main():
     return 0
 

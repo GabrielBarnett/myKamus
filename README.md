@@ -12,7 +12,19 @@ It uses open source bitext corpora to provide access to over 50 million example 
 - Red Book Results section for whole-word Indonesian headword definitions extracted from `indonesiandictionary.pdf`.
 - CLI search for quick terminal lookups.
 
-## Prerequisites
+## Windows beginner start
+
+On Windows, double-click:
+
+```text
+Start myKamus.bat
+```
+
+The launcher checks whether Python packages and bundled data files are ready. If packages are missing, it asks before running `python -m pip install -r requirements.txt`. If large data files are missing, it explains Git LFS and can offer to run `git lfs pull`.
+
+This is still a source-folder launcher, not a packaged `.exe`. A true Windows app or installer is a future improvement.
+
+## Prerequisites for Mac, Linux, and development
 
 - Python 3.x
 - Git LFS for the bundled dictionary and sentence corpus
@@ -23,7 +35,7 @@ Install Git LFS and Python dependencies:
 ```bash
 git lfs install
 git lfs pull
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 If `git status`, clone, or checkout fails with `git-lfs: command not found`, install Git LFS first. On macOS with Homebrew:

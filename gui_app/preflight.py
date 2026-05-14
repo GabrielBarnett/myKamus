@@ -38,12 +38,23 @@ def missing_dependency_imports(requirements):
     return missing
 
 
+def is_git_lfs_pointer(path):
+    try:
+        with Path(path).open("r", encoding="utf-8") as file:
+            return file.readline().strip() == "version https://git-lfs.github.com/spec/v1"
+    except OSError:
+        return True
+    except UnicodeDecodeError:
+        return False
+
+
 def missing_data_files(base_dir=BASE_DIR):
-    return [
-        file_name
-        for file_name in REQUIRED_DATA_FILES
-        if not (Path(base_dir) / file_name).is_file()
-    ]
+    missing = []
+    for file_name in REQUIRED_DATA_FILES:
+        path = Path(base_dir) / file_name
+        if not path.is_file() or is_git_lfs_pointer(path):
+            missing.append(file_name)
+    return missing
 
 
 def command_exists(command_name):

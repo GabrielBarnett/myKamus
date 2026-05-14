@@ -46,6 +46,22 @@ class PreflightDetectionTests(unittest.TestCase):
             missing,
         )
 
+    def test_missing_data_files_reports_git_lfs_pointer_files(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_dir = Path(temp_dir)
+            for file_name in preflight.REQUIRED_DATA_FILES:
+                (base_dir / file_name).write_text("data", encoding="utf-8")
+            (base_dir / "en-id_dict.txt").write_text(
+                "version https://git-lfs.github.com/spec/v1\n"
+                "oid sha256:1234567890abcdef\n"
+                "size 123\n",
+                encoding="utf-8",
+            )
+
+            missing = preflight.missing_data_files(base_dir)
+
+        self.assertEqual(["en-id_dict.txt"], missing)
+
     def test_ensure_dependencies_returns_true_when_none_missing(self):
         messages = []
 
@@ -144,13 +160,15 @@ class PreflightDetectionTests(unittest.TestCase):
         messages = []
 
         with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_sentences.txt"]), \
-                mock.patch.object(preflight, "command_exists", return_value=False):
+                mock.patch.object(preflight, "command_exists", return_value=False), \
+                mock.patch.object(preflight, "run_command") as run_command:
             result = preflight.ensure_data_files(
                 input_func=lambda _question: "n",
                 output_func=messages.append,
             )
 
         self.assertFalse(result)
+        run_command.assert_not_called()
         self.assertTrue(any("Git and Git LFS are needed" in message for message in messages))
 
     def test_ensure_data_files_runs_git_lfs_pull_when_user_approves(self):
@@ -196,13 +214,15 @@ class PreflightDetectionTests(unittest.TestCase):
         messages = []
 
         with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_sentences.txt"]), \
-                mock.patch.object(preflight, "command_exists", return_value=True):
+                mock.patch.object(preflight, "command_exists", return_value=True), \
+                mock.patch.object(preflight, "run_command") as run_command:
             result = preflight.ensure_data_files(
                 input_func=lambda _question: "n",
                 output_func=messages.append,
             )
 
         self.assertFalse(result)
+        run_command.assert_not_called()
         self.assertTrue(any("Cannot start until these data files are present" in message for message in messages))
 
 

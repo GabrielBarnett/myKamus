@@ -117,6 +117,30 @@ class RedBookIndexTests(unittest.TestCase):
         self.assertNotIn("Ia mengatakan sesuatu", definitions[0]["definition"])
         self.assertNotIn("He said something", definitions[0]["definition"])
 
+    def test_definition_extraction_strips_split_italic_example_tail(self):
+        lines = [
+            {
+                "page": 21,
+                "column": 0,
+                "y": 600,
+                "chunks": [
+                    chunk("coba", "Indrev-Bold", y=600),
+                    chunk("1", "Indrev-Bold", x=62, y=600),
+                    chunk("to try.", "Indrev-Roman", x=70, y=600),
+                    chunk("Ia", "Indrev-Italic", x=120, y=600),
+                    chunk("mengatakan", "Indrev-Italic", x=132, y=600),
+                    chunk("sesuatu.", "Indrev-Italic", x=176, y=600),
+                    chunk("He said something.", "Indrev-Roman", x=220, y=600),
+                ],
+            },
+        ]
+
+        definitions = red_book_index.extract_definitions_from_lines(lines)
+
+        self.assertEqual("to try.", definitions[0]["definition"])
+        self.assertNotIn("Ia mengatakan sesuatu", definitions[0]["definition"])
+        self.assertNotIn("He said something", definitions[0]["definition"])
+
     def test_variant_headword_terms_are_normalized(self):
         terms = red_book_index.headword_terms("zuhara , zuharah , zuhrah and zuhrat")
 

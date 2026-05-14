@@ -107,9 +107,27 @@ class GuiSearchAdapterTests(unittest.TestCase):
 
 @unittest.skipUnless(gui_app.QT_AVAILABLE, "PySide6 is not installed")
 class QtSmokeTests(unittest.TestCase):
-    def test_main_window_can_be_instantiated_offscreen(self):
-        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    class FakeRunningWorker:
+        def __init__(self):
+            self.interruption_requested = False
+            self.quit_requested = False
+            self.wait_timeout = None
 
+        def isRunning(self):
+            return True
+
+        def requestInterruption(self):
+            self.interruption_requested = True
+
+        def quit(self):
+            self.quit_requested = True
+
+        def wait(self, timeout):
+            self.wait_timeout = timeout
+            return True
+
+    def _create_window(self):
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         qt_app = gui_app.QApplication.instance() or gui_app.QApplication([])
         gui_app.apply_theme(qt_app)
         config = {
@@ -128,6 +146,11 @@ class QtSmokeTests(unittest.TestCase):
                 mock.patch.object(gui_app, "load_config", return_value=config), \
                 mock.patch.object(gui_app.MyKamusGUI, "_run_search", return_value=None):
             window = gui_app.MyKamusGUI()
+        window._write_window_config = lambda: None
+        return qt_app, window
+
+    def test_main_window_can_be_instantiated_offscreen(self):
+        qt_app, window = self._create_window()
         window.show()
         qt_app.processEvents()
 
@@ -148,6 +171,34 @@ class QtSmokeTests(unittest.TestCase):
         self.assertGreaterEqual(window.pause_button.height(), 30)
         with mock.patch.object(window, "_write_window_config", return_value=None):
             window.close()
+
+    def test_shutdown_workers_stops_index_and_search_workers(self):
+        _qt_app, window = self._create_window()
+        index_worker = self.FakeRunningWorker()
+        search_worker = self.FakeRunningWorker()
+        window.index_worker = index_worker
+        window.search_workers = {7: search_worker}
+
+        window._shutdown_workers()
+
+        self.assertTrue(index_worker.interruption_requested)
+        self.assertTrue(index_worker.quit_requested)
+        self.assertIsNotNone(index_worker.wait_timeout)
+        self.assertTrue(search_worker.interruption_requested)
+        self.assertTrue(search_worker.quit_requested)
+        self.assertIsNotNone(search_worker.wait_timeout)
+        self.assertIsNone(window.index_worker)
+        self.assertEqual({}, window.search_workers)
+
+    def test_close_event_shuts_down_workers(self):
+        _qt_app, window = self._create_window()
+        called = []
+        window._shutdown_workers = lambda: called.append(True)
+
+        with mock.patch.object(window, "_write_window_config", return_value=None):
+            window.close()
+
+        self.assertEqual([True], called)
 
 
 if __name__ == "__main__":

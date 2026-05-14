@@ -246,11 +246,22 @@ def _strip_initial_variant_note(text):
     return re.sub(r"^\s*\[[^\]]+\]\s*", "", text)
 
 
-def _strip_example_tail(definition, entry):
-    for chunk in entry["chunks"]:
-        if not chunk["italic"]:
+def _italic_text_runs(chunks):
+    run = []
+    for chunk in chunks:
+        if chunk["italic"] and not chunk["bold"]:
+            run.append(chunk)
             continue
-        italic_text = _chunks_to_text([chunk])
+        if run:
+            yield run
+            run = []
+    if run:
+        yield run
+
+
+def _strip_example_tail(definition, entry):
+    for run in _italic_text_runs(entry["chunks"]):
+        italic_text = _chunks_to_text(run)
         if _looks_like_indonesian_example(italic_text):
             index = definition.find(italic_text)
             if index > 0:

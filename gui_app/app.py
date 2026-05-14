@@ -48,6 +48,7 @@ CONFIG_PATH = BASE_DIR / "config.json"
 HISTORY_LIMIT = 12
 NARROW_LAYOUT_WIDTH = 760
 QT_MAX_SIZE = 16777215
+WORKER_SHUTDOWN_TIMEOUT_MS = 3000
 
 
 def resolve_sentence_limit(config, compact_mode, load_all):
@@ -726,6 +727,34 @@ if QT_AVAILABLE:
             if worker is not None:
                 worker.deleteLater()
 
+        def _stop_worker(self, worker):
+            if worker is None:
+                return True
+            if not worker.isRunning():
+                if hasattr(worker, "deleteLater"):
+                    worker.deleteLater()
+                return True
+            worker.requestInterruption()
+            worker.quit()
+            stopped = worker.wait(WORKER_SHUTDOWN_TIMEOUT_MS)
+            if stopped and hasattr(worker, "deleteLater"):
+                worker.deleteLater()
+            return stopped
+
+        def _shutdown_workers(self):
+            all_stopped = True
+            if self.index_worker is not None:
+                if self._stop_worker(self.index_worker):
+                    self.index_worker = None
+                else:
+                    all_stopped = False
+            for generation, worker in list(self.search_workers.items()):
+                if self._stop_worker(worker):
+                    self.search_workers.pop(generation, None)
+                else:
+                    all_stopped = False
+            return all_stopped
+
         def _finish_search(self, generation, result, error, load_all, origin):
             if generation != self.search_generation:
                 return
@@ -914,6 +943,9 @@ if QT_AVAILABLE:
                 self._set_responsive_layout(should_use_narrow_layout(event.size().width()))
 
         def closeEvent(self, event):
+            if not self._shutdown_workers():
+                event.ignore()
+                return
             self._cancel_searching_status()
             if hasattr(self, "clipboard_timer"):
                 self.clipboard_timer.stop()

@@ -10,8 +10,8 @@
   "gui": {
     "always_on_top": true,
     "compact_mode": false,
-    "window_size": "700x500",
-    "window_position": "+1101+214",
+    "window_size": "520x1361",
+    "window_position": "+2039+0",
     "load_all_sentence_limit": 200,
     "search_status_delay_ms": 200
   },

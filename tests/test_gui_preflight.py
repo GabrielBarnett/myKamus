@@ -111,6 +111,26 @@ class PreflightDetectionTests(unittest.TestCase):
         self.assertFalse(result)
         self.assertTrue(any("Dependency installation failed" in message for message in messages))
 
+    def test_ensure_dependencies_fails_when_packages_remain_missing_after_install(self):
+        messages = []
+        missing_results = [["PySide6"], ["PySide6"]]
+
+        with mock.patch.object(preflight, "read_requirements", return_value=["PySide6"]), \
+                mock.patch.object(
+                    preflight,
+                    "missing_dependency_imports",
+                    side_effect=lambda _requirements: missing_results.pop(0),
+                ), \
+                mock.patch.object(preflight, "run_command", return_value=True):
+            result = preflight.ensure_dependencies(
+                input_func=lambda _question: "y",
+                output_func=messages.append,
+            )
+
+        self.assertFalse(result)
+        self.assertTrue(any("Some Python packages are still missing" in message for message in messages))
+        self.assertTrue(any("- PySide6" in message for message in messages))
+
 
 if __name__ == "__main__":
     unittest.main()

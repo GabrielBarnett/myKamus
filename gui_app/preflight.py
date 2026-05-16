@@ -99,6 +99,68 @@ def run_command(command):
     return subprocess.run(command, cwd=BASE_DIR).returncode == 0
 
 
+def run_pip_command(command):
+    return subprocess.run(
+        command,
+        cwd=BASE_DIR,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def write_setup_log(command, result, log_path=SETUP_LOG_PATH, final_missing=None):
+    lines = [
+        "myKamus setup log",
+        "Python executable: " + sys.executable,
+        "Python version: " + sys.version.replace("\n", " "),
+        "Command: " + " ".join(str(part) for part in command),
+        "",
+        "pip stdout:",
+        result.stdout or "",
+        "",
+        "pip stderr:",
+        result.stderr or "",
+    ]
+    if final_missing is not None:
+        lines.extend(["", "Final missing packages: " + ", ".join(final_missing)])
+    Path(log_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def append_final_import_check(final_missing, log_path=SETUP_LOG_PATH):
+    missing_text = ", ".join(final_missing) if final_missing else "none"
+    with Path(log_path).open("a", encoding="utf-8") as log_file:
+        log_file.write("\nFinal local import check:\n")
+        log_file.write("Missing packages: " + missing_text + "\n")
+
+
+def install_local_dependencies(
+    vendor_path=VENDOR_PATH,
+    requirements_path=REQUIREMENTS_PATH,
+    log_path=SETUP_LOG_PATH,
+    run_command_func=run_pip_command,
+):
+    vendor_path = Path(vendor_path)
+    if vendor_path.exists():
+        shutil.rmtree(vendor_path)
+    vendor_path.mkdir(parents=True, exist_ok=True)
+    command = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--target",
+        str(vendor_path),
+        "--upgrade",
+        "--force-reinstall",
+        "-r",
+        str(requirements_path),
+    ]
+    result = run_command_func(command)
+    write_setup_log(command, result, log_path=log_path)
+    return result.returncode == 0
+
+
 def prompt_yes_no(question, input_func=input, output_func=print):
     while True:
         answer = input_func(question + " [Y/N] ").strip().casefold()

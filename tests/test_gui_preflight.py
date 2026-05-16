@@ -219,6 +219,68 @@ class PreflightDetectionTests(unittest.TestCase):
         self.assertTrue(any("Some Python packages are still missing" in message for message in messages))
         self.assertTrue(any("- PySide6" in message for message in messages))
 
+    def test_install_dependencies_deletes_vendor_and_uses_force_reinstall_target(self):
+        commands = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_dir = Path(temp_dir)
+            vendor_path = base_dir / ".mykamus_vendor"
+            vendor_path.mkdir()
+            (vendor_path / "stale.txt").write_text("old", encoding="utf-8")
+            requirements_path = base_dir / "requirements.txt"
+            requirements_path.write_text("PySide6\n", encoding="utf-8")
+
+            result = preflight.install_local_dependencies(
+                vendor_path=vendor_path,
+                requirements_path=requirements_path,
+                log_path=base_dir / "myKamus_setup.log",
+                run_command_func=lambda command: commands.append(command) or mock.Mock(
+                    returncode=0,
+                    stdout="installed",
+                    stderr="",
+                ),
+            )
+
+        self.assertTrue(result)
+        self.assertFalse((vendor_path / "stale.txt").exists())
+        self.assertEqual(
+            [[
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--target",
+                str(vendor_path),
+                "--upgrade",
+                "--force-reinstall",
+                "-r",
+                str(requirements_path),
+            ]],
+            commands,
+        )
+
+    def test_install_dependencies_writes_setup_log(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_dir = Path(temp_dir)
+            log_path = base_dir / "myKamus_setup.log"
+            result = preflight.install_local_dependencies(
+                vendor_path=base_dir / ".mykamus_vendor",
+                requirements_path=base_dir / "requirements.txt",
+                log_path=log_path,
+                run_command_func=lambda _command: mock.Mock(
+                    returncode=1,
+                    stdout="pip output",
+                    stderr="pip error",
+                ),
+            )
+
+            log_text = log_path.read_text(encoding="utf-8")
+
+        self.assertFalse(result)
+        self.assertIn(sys.executable, log_text)
+        self.assertIn("pip output", log_text)
+        self.assertIn("pip error", log_text)
+        self.assertIn("--force-reinstall", log_text)
+
     def test_ensure_data_files_returns_true_when_files_exist(self):
         with mock.patch.object(preflight, "missing_data_files", return_value=[]):
             result = preflight.ensure_data_files(

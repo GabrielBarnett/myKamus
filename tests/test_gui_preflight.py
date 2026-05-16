@@ -87,6 +87,25 @@ class PreflightDetectionTests(unittest.TestCase):
 
         self.assertEqual([], missing)
 
+    def test_missing_dependency_imports_invalidates_cache_after_vendor_created(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            vendor_path = Path(temp_dir) / ".mykamus_vendor"
+            module_name = "cacheprobe_mykamus"
+
+            try:
+                first_missing = preflight.missing_dependency_imports([module_name], vendor_path=vendor_path)
+                package_dir = vendor_path / module_name
+                package_dir.mkdir(parents=True)
+                (package_dir / "__init__.py").write_text("VALUE = 1\n", encoding="utf-8")
+                second_missing = preflight.missing_dependency_imports([module_name], vendor_path=vendor_path)
+            finally:
+                while str(vendor_path) in sys.path:
+                    sys.path.remove(str(vendor_path))
+                sys.modules.pop(module_name, None)
+
+        self.assertEqual([module_name], first_missing)
+        self.assertEqual([], second_missing)
+
     def test_missing_data_files_reports_required_files_only(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             base_dir = Path(temp_dir)

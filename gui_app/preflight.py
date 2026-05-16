@@ -62,6 +62,7 @@ def read_requirements(requirements_path=REQUIREMENTS_PATH):
 
 def missing_dependency_imports(requirements, vendor_path=VENDOR_PATH):
     prepend_vendor_path(vendor_path=vendor_path)
+    importlib.invalidate_caches()
     missing = []
     for requirement in requirements:
         module_name = REQUIREMENT_IMPORTS.get(requirement, requirement)

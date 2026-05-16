@@ -152,21 +152,42 @@ class PreflightDetectionTests(unittest.TestCase):
         messages = []
         missing_results = [["PySide6"], []]
 
-        with mock.patch.object(preflight, "read_requirements", return_value=["PySide6"]), \
-                mock.patch.object(
-                    preflight,
-                    "missing_dependency_imports",
-                    side_effect=lambda _requirements: missing_results.pop(0),
-                ), \
-                mock.patch.object(preflight, "install_local_dependencies", return_value=True) as install:
-            result = preflight.ensure_dependencies(
-                input_func=lambda _question: "y",
-                output_func=messages.append,
-            )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            log_path = Path(temp_dir) / "myKamus_setup.log"
+            with mock.patch.object(preflight, "read_requirements", return_value=["PySide6"]), \
+                    mock.patch.object(
+                        preflight,
+                        "missing_dependency_imports",
+                        side_effect=lambda _requirements: missing_results.pop(0),
+                    ), \
+                    mock.patch.object(preflight, "install_local_dependencies", return_value=True) as install:
+                result = preflight.ensure_dependencies(
+                    input_func=lambda _question: "y",
+                    output_func=messages.append,
+                    log_path=log_path,
+                )
 
         self.assertTrue(result)
         install.assert_called_once()
         self.assertTrue(any("local Python packages" in message for message in messages))
+
+    def test_ensure_dependencies_fails_when_user_declines_local_install(self):
+        messages = []
+
+        with mock.patch.object(preflight, "read_requirements", return_value=["PySide6"]), \
+                mock.patch.object(preflight, "missing_dependency_imports", return_value=["PySide6"]), \
+                mock.patch.object(preflight, "install_local_dependencies") as install:
+            result = preflight.ensure_dependencies(
+                input_func=lambda _question: "n",
+                output_func=messages.append,
+            )
+
+        self.assertFalse(result)
+        install.assert_not_called()
+        self.assertTrue(any(
+            "--target .mykamus_vendor --upgrade --force-reinstall" in message
+            for message in messages
+        ))
 
     def test_ensure_dependencies_failure_mentions_setup_log(self):
         messages = []
@@ -181,6 +202,33 @@ class PreflightDetectionTests(unittest.TestCase):
 
         self.assertFalse(result)
         self.assertTrue(any("myKamus_setup.log" in message for message in messages))
+
+    def test_ensure_dependencies_fails_when_packages_remain_missing_after_local_install(self):
+        messages = []
+        missing_results = [["PySide6"], ["PySide6"]]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            log_path = Path(temp_dir) / "myKamus_setup.log"
+            with mock.patch.object(preflight, "read_requirements", return_value=["PySide6"]), \
+                    mock.patch.object(
+                        preflight,
+                        "missing_dependency_imports",
+                        side_effect=lambda _requirements: missing_results.pop(0),
+                    ), \
+                    mock.patch.object(preflight, "install_local_dependencies", return_value=True):
+                result = preflight.ensure_dependencies(
+                    input_func=lambda _question: "y",
+                    output_func=messages.append,
+                    log_path=log_path,
+                )
+
+            log_text = log_path.read_text(encoding="utf-8")
+
+        self.assertFalse(result)
+        self.assertTrue(any("- PySide6" in message for message in messages))
+        self.assertTrue(any("myKamus_setup.log" in message for message in messages))
+        self.assertIn("Final local import check", log_text)
+        self.assertIn("Missing packages: PySide6", log_text)
 
     def test_install_dependencies_deletes_vendor_and_uses_force_reinstall_target(self):
         commands = []

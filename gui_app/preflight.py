@@ -176,7 +176,7 @@ def dependency_failure_message(output_func=print):
     output_func("Please send myKamus_setup.log to your internal support person.")
 
 
-def ensure_dependencies(input_func=input, output_func=print):
+def ensure_dependencies(input_func=input, output_func=print, log_path=SETUP_LOG_PATH):
     requirements = read_requirements()
     missing = missing_dependency_imports(requirements)
     if not missing:
@@ -202,7 +202,7 @@ def ensure_dependencies(input_func=input, output_func=print):
         return False
 
     still_missing = missing_dependency_imports(requirements)
-    append_final_import_check(still_missing)
+    append_final_import_check(still_missing, log_path=log_path)
     if still_missing:
         output_func("Some local Python packages are still missing:")
         for package_name in still_missing:

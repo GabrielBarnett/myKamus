@@ -2,6 +2,13 @@
 setlocal
 cd /d "%~dp0"
 
+set "MYKAMUS_DIR=%~dp0"
+if defined PYTHONPATH (
+    set "PYTHONPATH=%MYKAMUS_DIR%.mykamus_vendor;%PYTHONPATH%"
+) else (
+    set "PYTHONPATH=%MYKAMUS_DIR%.mykamus_vendor"
+)
+
 set "PYTHON_CMD="
 
 py -3 --version >nul 2>nul
@@ -26,7 +33,8 @@ if "%PYTHON_CMD%"=="" (
 %PYTHON_CMD% -m gui_app.preflight
 if not %ERRORLEVEL%==0 (
     echo.
-    echo myKamus could not finish setup.
+    echo myKamus could not install or load its local Python packages.
+    echo Please send myKamus_setup.log to your internal support person.
     pause
     exit /b 1
 )

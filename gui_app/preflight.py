@@ -197,7 +197,7 @@ def ensure_dependencies(input_func=input, output_func=print, log_path=SETUP_LOG_
         )
         return False
 
-    if not install_local_dependencies():
+    if not install_local_dependencies(log_path=log_path):
         dependency_failure_message(output_func=output_func)
         return False
 

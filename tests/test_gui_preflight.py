@@ -185,7 +185,7 @@ class PreflightDetectionTests(unittest.TestCase):
                 )
 
         self.assertTrue(result)
-        install.assert_called_once()
+        install.assert_called_once_with(log_path=log_path)
         self.assertTrue(any("local Python packages" in message for message in messages))
 
     def test_ensure_dependencies_fails_when_user_declines_local_install(self):

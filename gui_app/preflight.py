@@ -171,44 +171,43 @@ def prompt_yes_no(question, input_func=input, output_func=print):
         output_func("Please answer Y or N.")
 
 
+def dependency_failure_message(output_func=print):
+    output_func("myKamus could not install or load its local Python packages.")
+    output_func("Please send myKamus_setup.log to your internal support person.")
+
+
 def ensure_dependencies(input_func=input, output_func=print):
     requirements = read_requirements()
     missing = missing_dependency_imports(requirements)
     if not missing:
         return True
 
-    output_func("myKamus needs a few Python packages before it can start:")
+    output_func("myKamus needs local Python packages before it can start:")
     for package_name in missing:
         output_func("- " + package_name)
     output_func("")
 
     if not prompt_yes_no(
-        "Install them now using requirements.txt?",
+        "Install them locally into .mykamus_vendor now?",
         input_func=input_func,
         output_func=output_func,
     ):
         output_func(
-            "You can install them later with: python -m pip install -r requirements.txt"
+            "You can install them later with: python -m pip install --target .mykamus_vendor --upgrade --force-reinstall -r requirements.txt"
         )
         return False
 
-    install_command = [
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "-r",
-        str(REQUIREMENTS_PATH),
-    ]
-    if not run_command(install_command):
-        output_func("Dependency installation failed.")
+    if not install_local_dependencies():
+        dependency_failure_message(output_func=output_func)
         return False
 
     still_missing = missing_dependency_imports(requirements)
+    append_final_import_check(still_missing)
     if still_missing:
-        output_func("Some Python packages are still missing:")
+        output_func("Some local Python packages are still missing:")
         for package_name in still_missing:
             output_func("- " + package_name)
+        dependency_failure_message(output_func=output_func)
         return False
 
     return True

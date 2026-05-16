@@ -134,22 +134,22 @@ class PreflightDetectionTests(unittest.TestCase):
 
         self.assertEqual(["en-id_dict.txt"], missing)
 
-    def test_ensure_dependencies_returns_true_when_none_missing(self):
+    def test_ensure_dependencies_does_not_install_when_local_imports_pass(self):
         messages = []
-
         with mock.patch.object(preflight, "read_requirements", return_value=["PySide6"]), \
-                mock.patch.object(preflight, "missing_dependency_imports", return_value=[]):
+                mock.patch.object(preflight, "missing_dependency_imports", return_value=[]), \
+                mock.patch.object(preflight, "install_local_dependencies") as install:
             result = preflight.ensure_dependencies(
                 input_func=lambda _question: "n",
                 output_func=messages.append,
             )
 
         self.assertTrue(result)
+        install.assert_not_called()
         self.assertEqual([], messages)
 
-    def test_ensure_dependencies_installs_when_user_approves(self):
+    def test_ensure_dependencies_asks_before_local_reinstall(self):
         messages = []
-        install_calls = []
         missing_results = [["PySide6"], []]
 
         with mock.patch.object(preflight, "read_requirements", return_value=["PySide6"]), \
@@ -158,66 +158,29 @@ class PreflightDetectionTests(unittest.TestCase):
                     "missing_dependency_imports",
                     side_effect=lambda _requirements: missing_results.pop(0),
                 ), \
-                mock.patch.object(
-                    preflight,
-                    "run_command",
-                    side_effect=lambda command: install_calls.append(command) or True,
-                ):
+                mock.patch.object(preflight, "install_local_dependencies", return_value=True) as install:
             result = preflight.ensure_dependencies(
                 input_func=lambda _question: "y",
                 output_func=messages.append,
             )
 
         self.assertTrue(result)
-        self.assertEqual([[sys.executable, "-m", "pip", "install", "-r", str(preflight.REQUIREMENTS_PATH)]], install_calls)
-        self.assertTrue(any("myKamus needs a few Python packages" in message for message in messages))
+        install.assert_called_once()
+        self.assertTrue(any("local Python packages" in message for message in messages))
 
-    def test_ensure_dependencies_fails_when_user_declines_install(self):
-        messages = []
-
-        with mock.patch.object(preflight, "read_requirements", return_value=["PySide6"]), \
-                mock.patch.object(preflight, "missing_dependency_imports", return_value=["PySide6"]):
-            result = preflight.ensure_dependencies(
-                input_func=lambda _question: "n",
-                output_func=messages.append,
-            )
-
-        self.assertFalse(result)
-        self.assertTrue(any("python -m pip install -r requirements.txt" in message for message in messages))
-
-    def test_ensure_dependencies_fails_when_install_command_fails(self):
+    def test_ensure_dependencies_failure_mentions_setup_log(self):
         messages = []
 
         with mock.patch.object(preflight, "read_requirements", return_value=["PySide6"]), \
                 mock.patch.object(preflight, "missing_dependency_imports", return_value=["PySide6"]), \
-                mock.patch.object(preflight, "run_command", return_value=False):
+                mock.patch.object(preflight, "install_local_dependencies", return_value=False):
             result = preflight.ensure_dependencies(
                 input_func=lambda _question: "y",
                 output_func=messages.append,
             )
 
         self.assertFalse(result)
-        self.assertTrue(any("Dependency installation failed" in message for message in messages))
-
-    def test_ensure_dependencies_fails_when_packages_remain_missing_after_install(self):
-        messages = []
-        missing_results = [["PySide6"], ["PySide6"]]
-
-        with mock.patch.object(preflight, "read_requirements", return_value=["PySide6"]), \
-                mock.patch.object(
-                    preflight,
-                    "missing_dependency_imports",
-                    side_effect=lambda _requirements: missing_results.pop(0),
-                ), \
-                mock.patch.object(preflight, "run_command", return_value=True):
-            result = preflight.ensure_dependencies(
-                input_func=lambda _question: "y",
-                output_func=messages.append,
-            )
-
-        self.assertFalse(result)
-        self.assertTrue(any("Some Python packages are still missing" in message for message in messages))
-        self.assertTrue(any("- PySide6" in message for message in messages))
+        self.assertTrue(any("myKamus_setup.log" in message for message in messages))
 
     def test_install_dependencies_deletes_vendor_and_uses_force_reinstall_target(self):
         commands = []

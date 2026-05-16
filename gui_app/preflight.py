@@ -31,6 +31,26 @@ def prepend_vendor_path(vendor_path=VENDOR_PATH, python_path=None):
     python_path.insert(0, text_path)
 
 
+def path_is_inside(path, base_path):
+    try:
+        Path(path).resolve(strict=False).relative_to(Path(base_path).resolve(strict=False))
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def spec_uses_vendor_path(spec, vendor_path):
+    origin = getattr(spec, "origin", None)
+    if origin and origin not in {"built-in", "frozen"} and path_is_inside(origin, vendor_path):
+        return True
+
+    for location in getattr(spec, "submodule_search_locations", None) or []:
+        if path_is_inside(location, vendor_path):
+            return True
+
+    return False
+
+
 def read_requirements(requirements_path=REQUIREMENTS_PATH):
     requirements = []
     for line in Path(requirements_path).read_text(encoding="utf-8").splitlines():
@@ -45,7 +65,8 @@ def missing_dependency_imports(requirements, vendor_path=VENDOR_PATH):
     missing = []
     for requirement in requirements:
         module_name = REQUIREMENT_IMPORTS.get(requirement, requirement)
-        if importlib.util.find_spec(module_name) is None:
+        spec = importlib.util.find_spec(module_name)
+        if spec is None or not spec_uses_vendor_path(spec, vendor_path):
             missing.append(requirement)
     return missing
 

@@ -34,14 +34,20 @@ class PreflightDetectionTests(unittest.TestCase):
     def test_missing_dependency_imports_checks_with_vendor_path_first(self):
         calls = []
 
-        def fake_find_spec(module_name):
-            calls.append((module_name, list(sys.path)))
-            if module_name == "PySide6":
-                return None
-            return object()
-
         with tempfile.TemporaryDirectory() as temp_dir:
             vendor_path = Path(temp_dir) / ".mykamus_vendor"
+            keyboard_dir = vendor_path / "keyboard"
+
+            class FakeSpec:
+                origin = str(keyboard_dir / "__init__.py")
+                submodule_search_locations = [str(keyboard_dir)]
+
+            def fake_find_spec(module_name):
+                calls.append((module_name, list(sys.path)))
+                if module_name == "PySide6":
+                    return None
+                return FakeSpec()
+
             python_path = ["global-packages"]
             with mock.patch.object(preflight.importlib.util, "find_spec", side_effect=fake_find_spec), \
                     mock.patch.object(preflight.sys, "path", python_path):
@@ -53,6 +59,33 @@ class PreflightDetectionTests(unittest.TestCase):
         self.assertEqual(["PySide6"], missing)
         self.assertTrue(all(call_path[0] == str(vendor_path) for _module, call_path in calls))
         self.assertEqual([str(vendor_path), "global-packages"], python_path)
+
+    def test_missing_dependency_imports_rejects_global_only_package(self):
+        class FakeSpec:
+            origin = str(Path("C:/global/site-packages/PySide6/__init__.py"))
+            submodule_search_locations = [str(Path("C:/global/site-packages/PySide6"))]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            vendor_path = Path(temp_dir) / ".mykamus_vendor"
+            with mock.patch.object(preflight.importlib.util, "find_spec", return_value=FakeSpec()):
+                missing = preflight.missing_dependency_imports(["PySide6"], vendor_path=vendor_path)
+
+        self.assertEqual(["PySide6"], missing)
+
+    def test_missing_dependency_imports_accepts_vendor_package(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            vendor_path = Path(temp_dir) / ".mykamus_vendor"
+            package_dir = vendor_path / "PySide6"
+            package_dir.mkdir(parents=True)
+
+            class FakeSpec:
+                origin = str(package_dir / "__init__.py")
+                submodule_search_locations = [str(package_dir)]
+
+            with mock.patch.object(preflight.importlib.util, "find_spec", return_value=FakeSpec()):
+                missing = preflight.missing_dependency_imports(["PySide6"], vendor_path=vendor_path)
+
+        self.assertEqual([], missing)
 
     def test_missing_data_files_reports_required_files_only(self):
         with tempfile.TemporaryDirectory() as temp_dir:

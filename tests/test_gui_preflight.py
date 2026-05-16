@@ -240,8 +240,9 @@ class PreflightDetectionTests(unittest.TestCase):
                 ),
             )
 
-        self.assertTrue(result)
-        self.assertFalse((vendor_path / "stale.txt").exists())
+            self.assertTrue(result)
+            self.assertFalse((vendor_path / "stale.txt").exists())
+
         self.assertEqual(
             [[
                 sys.executable,

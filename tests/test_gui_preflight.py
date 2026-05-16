@@ -21,18 +21,38 @@ class PreflightDetectionTests(unittest.TestCase):
                 preflight.read_requirements(requirements_path),
             )
 
-    def test_missing_dependency_imports_maps_requirements_to_modules(self):
+    def test_prepend_vendor_path_inserts_local_vendor_first_once(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            vendor_path = Path(temp_dir) / ".mykamus_vendor"
+            python_path = ["global-packages"]
+
+            preflight.prepend_vendor_path(vendor_path=vendor_path, python_path=python_path)
+            preflight.prepend_vendor_path(vendor_path=vendor_path, python_path=python_path)
+
+        self.assertEqual([str(vendor_path), "global-packages"], python_path)
+
+    def test_missing_dependency_imports_checks_with_vendor_path_first(self):
+        calls = []
+
         def fake_find_spec(module_name):
-            if module_name in {"keyboard", "pypdf"}:
-                return object()
-            return None
+            calls.append((module_name, list(sys.path)))
+            if module_name == "PySide6":
+                return None
+            return object()
 
-        with mock.patch.object(preflight.importlib.util, "find_spec", side_effect=fake_find_spec):
-            missing = preflight.missing_dependency_imports(
-                ["keyboard", "pypdf", "PySide6", "pyperclip"]
-            )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            vendor_path = Path(temp_dir) / ".mykamus_vendor"
+            python_path = ["global-packages"]
+            with mock.patch.object(preflight.importlib.util, "find_spec", side_effect=fake_find_spec), \
+                    mock.patch.object(preflight.sys, "path", python_path):
+                missing = preflight.missing_dependency_imports(
+                    ["keyboard", "PySide6"],
+                    vendor_path=vendor_path,
+                )
 
-        self.assertEqual(["PySide6", "pyperclip"], missing)
+        self.assertEqual(["PySide6"], missing)
+        self.assertTrue(all(call_path[0] == str(vendor_path) for _module, call_path in calls))
+        self.assertEqual([str(vendor_path), "global-packages"], python_path)
 
     def test_missing_data_files_reports_required_files_only(self):
         with tempfile.TemporaryDirectory() as temp_dir:

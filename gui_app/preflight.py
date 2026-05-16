@@ -7,6 +7,8 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 REQUIREMENTS_PATH = BASE_DIR / "requirements.txt"
+VENDOR_PATH = BASE_DIR / ".mykamus_vendor"
+SETUP_LOG_PATH = BASE_DIR / "myKamus_setup.log"
 REQUIRED_DATA_FILES = [
     "en-id_dict.txt",
     "en-id_sentences.txt",
@@ -20,6 +22,15 @@ REQUIREMENT_IMPORTS = {
 }
 
 
+def prepend_vendor_path(vendor_path=VENDOR_PATH, python_path=None):
+    if python_path is None:
+        python_path = sys.path
+    text_path = str(Path(vendor_path))
+    if text_path in python_path:
+        python_path.remove(text_path)
+    python_path.insert(0, text_path)
+
+
 def read_requirements(requirements_path=REQUIREMENTS_PATH):
     requirements = []
     for line in Path(requirements_path).read_text(encoding="utf-8").splitlines():
@@ -29,7 +40,8 @@ def read_requirements(requirements_path=REQUIREMENTS_PATH):
     return requirements
 
 
-def missing_dependency_imports(requirements):
+def missing_dependency_imports(requirements, vendor_path=VENDOR_PATH):
+    prepend_vendor_path(vendor_path=vendor_path)
     missing = []
     for requirement in requirements:
         module_name = REQUIREMENT_IMPORTS.get(requirement, requirement)

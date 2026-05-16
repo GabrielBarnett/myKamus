@@ -12,11 +12,11 @@ if defined PYTHONPATH (
 set "PYTHON_CMD="
 
 py -3 --version >nul 2>nul
-if %ERRORLEVEL%==0 (
+if !ERRORLEVEL!==0 (
     set "PYTHON_CMD=py -3"
 ) else (
     python --version >nul 2>nul
-    if %ERRORLEVEL%==0 (
+    if !ERRORLEVEL!==0 (
         set "PYTHON_CMD=python"
     )
 )
@@ -31,7 +31,7 @@ if "%PYTHON_CMD%"=="" (
 )
 
 %PYTHON_CMD% -m gui_app.preflight
-if not %ERRORLEVEL%==0 (
+if not !ERRORLEVEL!==0 (
     echo.
     echo myKamus could not install or load its local Python packages.
     echo Please send myKamus_setup.log to your internal support person.
@@ -40,7 +40,7 @@ if not %ERRORLEVEL%==0 (
 )
 
 %PYTHON_CMD% -m gui_app.app
-if not %ERRORLEVEL%==0 (
+if not !ERRORLEVEL!==0 (
     echo.
     echo myKamus closed with an error.
     pause

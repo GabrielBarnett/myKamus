@@ -18,6 +18,8 @@ class PreflightDetectionTests(unittest.TestCase):
         self.assertIn("%~dp0", launcher_text)
         self.assertIn(".mykamus_vendor", launcher_text)
         self.assertIn("!PYTHONPATH!", launcher_text)
+        self.assertIn("!ERRORLEVEL!", launcher_text)
+        self.assertNotIn("%ERRORLEVEL%", launcher_text)
         self.assertGreaterEqual(pythonpath_index, 0)
         self.assertGreaterEqual(delayed_pythonpath_index, 0)
         self.assertGreater(gui_index, pythonpath_index)

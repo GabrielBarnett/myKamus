@@ -1,10 +1,10 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
 set "MYKAMUS_DIR=%~dp0"
 if defined PYTHONPATH (
-    set "PYTHONPATH=%MYKAMUS_DIR%.mykamus_vendor;%PYTHONPATH%"
+    set "PYTHONPATH=%MYKAMUS_DIR%.mykamus_vendor;!PYTHONPATH!"
 ) else (
     set "PYTHONPATH=%MYKAMUS_DIR%.mykamus_vendor"
 )

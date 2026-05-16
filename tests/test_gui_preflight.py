@@ -11,12 +11,17 @@ class PreflightDetectionTests(unittest.TestCase):
     def test_windows_launcher_sets_vendor_pythonpath_before_gui_start(self):
         launcher_text = (preflight.BASE_DIR / "Start myKamus.bat").read_text(encoding="utf-8")
         pythonpath_index = launcher_text.find("PYTHONPATH")
+        delayed_pythonpath_index = launcher_text.find("!PYTHONPATH!")
         gui_index = launcher_text.find("-m gui_app.app")
 
+        self.assertIn("setlocal EnableDelayedExpansion", launcher_text)
         self.assertIn("%~dp0", launcher_text)
         self.assertIn(".mykamus_vendor", launcher_text)
+        self.assertIn("!PYTHONPATH!", launcher_text)
         self.assertGreaterEqual(pythonpath_index, 0)
+        self.assertGreaterEqual(delayed_pythonpath_index, 0)
         self.assertGreater(gui_index, pythonpath_index)
+        self.assertGreater(gui_index, delayed_pythonpath_index)
 
     def test_read_requirements_ignores_blank_lines_and_comments(self):
         with tempfile.TemporaryDirectory() as temp_dir:

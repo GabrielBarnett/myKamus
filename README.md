@@ -20,7 +20,21 @@ On Windows, double-click:
 Start myKamus.bat
 ```
 
-The launcher checks whether Python packages and bundled data files are ready. If packages are missing, it asks before running `python -m pip install -r requirements.txt`. If large data files are missing, it explains Git LFS and can offer to run `git lfs pull`.
+The launcher checks whether local Python packages and bundled data files are ready before starting the GUI. Python packages are installed into `.mykamus_vendor/` inside the myKamus folder, so myKamus does not rely on global PySide6 or global pip package state on corporate computers.
+
+If local packages are missing, the launcher asks before deleting `.mykamus_vendor/` and reinstalling dependencies with:
+
+```bash
+python -m pip install --target .mykamus_vendor --upgrade --force-reinstall -r requirements.txt
+```
+
+If setup fails, myKamus writes details to `myKamus_setup.log`. Send that file to your internal support person.
+
+Mac, Linux, and manual users can still run:
+
+```bash
+python -m gui_app.app
+```
 
 This is still a source-folder launcher, not a packaged `.exe`. A true Windows app or installer is a future improvement.
 

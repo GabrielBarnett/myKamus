@@ -7,6 +7,8 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 REQUIREMENTS_PATH = BASE_DIR / "requirements.txt"
+VENDOR_PATH = BASE_DIR / ".mykamus_vendor"
+SETUP_LOG_PATH = BASE_DIR / "myKamus_setup.log"
 REQUIRED_DATA_FILES = [
     "en-id_dict.txt",
     "en-id_sentences.txt",
@@ -20,6 +22,35 @@ REQUIREMENT_IMPORTS = {
 }
 
 
+def prepend_vendor_path(vendor_path=VENDOR_PATH, python_path=None):
+    if python_path is None:
+        python_path = sys.path
+    text_path = str(Path(vendor_path))
+    if text_path in python_path:
+        python_path.remove(text_path)
+    python_path.insert(0, text_path)
+
+
+def path_is_inside(path, base_path):
+    try:
+        Path(path).resolve(strict=False).relative_to(Path(base_path).resolve(strict=False))
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def spec_uses_vendor_path(spec, vendor_path):
+    origin = getattr(spec, "origin", None)
+    if origin and origin not in {"built-in", "frozen"} and path_is_inside(origin, vendor_path):
+        return True
+
+    for location in getattr(spec, "submodule_search_locations", None) or []:
+        if path_is_inside(location, vendor_path):
+            return True
+
+    return False
+
+
 def read_requirements(requirements_path=REQUIREMENTS_PATH):
     requirements = []
     for line in Path(requirements_path).read_text(encoding="utf-8").splitlines():
@@ -29,11 +60,14 @@ def read_requirements(requirements_path=REQUIREMENTS_PATH):
     return requirements
 
 
-def missing_dependency_imports(requirements):
+def missing_dependency_imports(requirements, vendor_path=VENDOR_PATH):
+    prepend_vendor_path(vendor_path=vendor_path)
+    importlib.invalidate_caches()
     missing = []
     for requirement in requirements:
         module_name = REQUIREMENT_IMPORTS.get(requirement, requirement)
-        if importlib.util.find_spec(module_name) is None:
+        spec = importlib.util.find_spec(module_name)
+        if spec is None or not spec_uses_vendor_path(spec, vendor_path):
             missing.append(requirement)
     return missing
 
@@ -65,6 +99,68 @@ def run_command(command):
     return subprocess.run(command, cwd=BASE_DIR).returncode == 0
 
 
+def run_pip_command(command):
+    return subprocess.run(
+        command,
+        cwd=BASE_DIR,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def write_setup_log(command, result, log_path=SETUP_LOG_PATH, final_missing=None):
+    lines = [
+        "myKamus setup log",
+        "Python executable: " + sys.executable,
+        "Python version: " + sys.version.replace("\n", " "),
+        "Command: " + " ".join(str(part) for part in command),
+        "",
+        "pip stdout:",
+        result.stdout or "",
+        "",
+        "pip stderr:",
+        result.stderr or "",
+    ]
+    if final_missing is not None:
+        lines.extend(["", "Final missing packages: " + ", ".join(final_missing)])
+    Path(log_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def append_final_import_check(final_missing, log_path=SETUP_LOG_PATH):
+    missing_text = ", ".join(final_missing) if final_missing else "none"
+    with Path(log_path).open("a", encoding="utf-8") as log_file:
+        log_file.write("\nFinal local import check:\n")
+        log_file.write("Missing packages: " + missing_text + "\n")
+
+
+def install_local_dependencies(
+    vendor_path=VENDOR_PATH,
+    requirements_path=REQUIREMENTS_PATH,
+    log_path=SETUP_LOG_PATH,
+    run_command_func=run_pip_command,
+):
+    vendor_path = Path(vendor_path)
+    if vendor_path.exists():
+        shutil.rmtree(vendor_path)
+    vendor_path.mkdir(parents=True, exist_ok=True)
+    command = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--target",
+        str(vendor_path),
+        "--upgrade",
+        "--force-reinstall",
+        "-r",
+        str(requirements_path),
+    ]
+    result = run_command_func(command)
+    write_setup_log(command, result, log_path=log_path)
+    return result.returncode == 0
+
+
 def prompt_yes_no(question, input_func=input, output_func=print):
     while True:
         answer = input_func(question + " [Y/N] ").strip().casefold()
@@ -75,44 +171,43 @@ def prompt_yes_no(question, input_func=input, output_func=print):
         output_func("Please answer Y or N.")
 
 
-def ensure_dependencies(input_func=input, output_func=print):
+def dependency_failure_message(output_func=print):
+    output_func("myKamus could not install or load its local Python packages.")
+    output_func("Please send myKamus_setup.log to your internal support person.")
+
+
+def ensure_dependencies(input_func=input, output_func=print, log_path=SETUP_LOG_PATH):
     requirements = read_requirements()
     missing = missing_dependency_imports(requirements)
     if not missing:
         return True
 
-    output_func("myKamus needs a few Python packages before it can start:")
+    output_func("myKamus needs local Python packages before it can start:")
     for package_name in missing:
         output_func("- " + package_name)
     output_func("")
 
     if not prompt_yes_no(
-        "Install them now using requirements.txt?",
+        "Install them locally into .mykamus_vendor now?",
         input_func=input_func,
         output_func=output_func,
     ):
         output_func(
-            "You can install them later with: python -m pip install -r requirements.txt"
+            "You can install them later with: python -m pip install --target .mykamus_vendor --upgrade --force-reinstall -r requirements.txt"
         )
         return False
 
-    install_command = [
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "-r",
-        str(REQUIREMENTS_PATH),
-    ]
-    if not run_command(install_command):
-        output_func("Dependency installation failed.")
+    if not install_local_dependencies(log_path=log_path):
+        dependency_failure_message(output_func=output_func)
         return False
 
     still_missing = missing_dependency_imports(requirements)
+    append_final_import_check(still_missing, log_path=log_path)
     if still_missing:
-        output_func("Some Python packages are still missing:")
+        output_func("Some local Python packages are still missing:")
         for package_name in still_missing:
             output_func("- " + package_name)
+        dependency_failure_message(output_func=output_func)
         return False
 
     return True

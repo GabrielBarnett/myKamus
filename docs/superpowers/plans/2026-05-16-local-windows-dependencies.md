@@ -31,7 +31,7 @@ Do not change GUI layout, search/indexing logic, result rendering, Mac/Linux ent
 - Modify: `gui_app/preflight.py`
 - Modify: `tests/test_gui_preflight.py`
 
-- [ ] **Step 1: Write failing tests for vendor path and local-only checks**
+- [x] **Step 1: Write failing tests for vendor path and local-only checks**
 
 In `tests/test_gui_preflight.py`, replace `test_missing_dependency_imports_maps_requirements_to_modules` with:
 
@@ -70,7 +70,7 @@ In `tests/test_gui_preflight.py`, replace `test_missing_dependency_imports_maps_
         self.assertEqual([str(vendor_path), "global-packages"], python_path)
 ```
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run:
 
@@ -80,7 +80,7 @@ python -B -m unittest discover -s tests -p test_gui_preflight.py
 
 Expected: failures for missing `prepend_vendor_path` and unsupported `vendor_path` argument on `missing_dependency_imports`.
 
-- [ ] **Step 3: Implement vendor path helpers**
+- [x] **Step 3: Implement vendor path helpers**
 
 In `gui_app/preflight.py`, add after `REQUIREMENTS_PATH`:
 
@@ -114,7 +114,7 @@ def missing_dependency_imports(requirements, vendor_path=VENDOR_PATH):
     return missing
 ```
 
-- [ ] **Step 4: Run tests and verify they pass**
+- [x] **Step 4: Run tests and verify they pass**
 
 Run:
 
@@ -124,7 +124,7 @@ python -B -m unittest discover -s tests -p test_gui_preflight.py
 
 Expected: all `test_gui_preflight.py` tests pass.
 
-- [ ] **Step 5: Commit vendor path work**
+- [x] **Step 5: Commit vendor path work**
 
 Run:
 
@@ -143,7 +143,7 @@ Expected: commit includes only `gui_app/preflight.py` and `tests/test_gui_prefli
 - Modify: `gui_app/preflight.py`
 - Modify: `tests/test_gui_preflight.py`
 
-- [ ] **Step 1: Write failing tests for reinstall and logging helpers**
+- [x] **Step 1: Write failing tests for reinstall and logging helpers**
 
 Append these tests to `tests/test_gui_preflight.py`:
 
@@ -211,7 +211,7 @@ Append these tests to `tests/test_gui_preflight.py`:
         self.assertIn("--force-reinstall", log_text)
 ```
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run:
 
@@ -221,7 +221,7 @@ python -B -m unittest discover -s tests -p test_gui_preflight.py
 
 Expected: failure with missing `install_local_dependencies`.
 
-- [ ] **Step 3: Implement reinstall and logging helpers**
+- [x] **Step 3: Implement reinstall and logging helpers**
 
 In `gui_app/preflight.py`, add:
 
@@ -288,7 +288,7 @@ def install_local_dependencies(
     return result.returncode == 0
 ```
 
-- [ ] **Step 4: Run tests and verify they pass**
+- [x] **Step 4: Run tests and verify they pass**
 
 Run:
 
@@ -298,7 +298,7 @@ python -B -m unittest discover -s tests -p test_gui_preflight.py
 
 Expected: all `test_gui_preflight.py` tests pass.
 
-- [ ] **Step 5: Commit reinstall and logging helpers**
+- [x] **Step 5: Commit reinstall and logging helpers**
 
 Run:
 
@@ -317,7 +317,7 @@ Expected: commit includes only `gui_app/preflight.py` and `tests/test_gui_prefli
 - Modify: `gui_app/preflight.py`
 - Modify: `tests/test_gui_preflight.py`
 
-- [ ] **Step 1: Replace old dependency-flow tests**
+- [x] **Step 1: Replace old dependency-flow tests**
 
 Replace the old tests that expect `python -m pip install -r requirements.txt` without a target with these tests:
 
@@ -371,7 +371,7 @@ Replace the old tests that expect `python -m pip install -r requirements.txt` wi
         self.assertTrue(any("myKamus_setup.log" in message for message in messages))
 ```
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run:
 
@@ -381,7 +381,7 @@ python -B -m unittest discover -s tests -p test_gui_preflight.py
 
 Expected: failures because `ensure_dependencies()` still describes global requirements installation and does not call `install_local_dependencies()`.
 
-- [ ] **Step 3: Implement local dependency preflight flow**
+- [x] **Step 3: Implement local dependency preflight flow**
 
 Replace `ensure_dependencies()` with:
 
@@ -428,7 +428,7 @@ def ensure_dependencies(input_func=input, output_func=print):
     return True
 ```
 
-- [ ] **Step 4: Run tests and verify they pass**
+- [x] **Step 4: Run tests and verify they pass**
 
 Run:
 
@@ -438,7 +438,7 @@ python -B -m unittest discover -s tests -p test_gui_preflight.py
 
 Expected: all `test_gui_preflight.py` tests pass.
 
-- [ ] **Step 5: Commit dependency flow**
+- [x] **Step 5: Commit dependency flow**
 
 Run:
 
@@ -457,7 +457,7 @@ Expected: commit includes only `gui_app/preflight.py` and `tests/test_gui_prefli
 - Modify: `Start myKamus.bat`
 - Modify: `tests/test_gui_preflight.py`
 
-- [ ] **Step 1: Write failing launcher text test**
+- [x] **Step 1: Write failing launcher text test**
 
 Append this test to `tests/test_gui_preflight.py`:
 
@@ -473,7 +473,7 @@ Append this test to `tests/test_gui_preflight.py`:
         self.assertGreater(gui_index, pythonpath_index)
 ```
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run:
 
@@ -483,7 +483,7 @@ python -B -m unittest discover -s tests -p test_gui_preflight.py
 
 Expected: failure because `Start myKamus.bat` does not set `PYTHONPATH`.
 
-- [ ] **Step 3: Update launcher**
+- [x] **Step 3: Update launcher**
 
 In `Start myKamus.bat`, after `cd /d "%~dp0"` add:
 
@@ -509,7 +509,7 @@ echo myKamus could not install or load its local Python packages.
 echo Please send myKamus_setup.log to your internal support person.
 ```
 
-- [ ] **Step 4: Run tests and verify they pass**
+- [x] **Step 4: Run tests and verify they pass**
 
 Run:
 
@@ -519,7 +519,7 @@ python -B -m unittest discover -s tests -p test_gui_preflight.py
 
 Expected: all `test_gui_preflight.py` tests pass.
 
-- [ ] **Step 5: Commit launcher update**
+- [x] **Step 5: Commit launcher update**
 
 Run:
 
@@ -537,7 +537,7 @@ Expected: commit includes launcher and test updates.
 **Files:**
 - Modify: `README.md`
 
-- [ ] **Step 1: Update README Windows section**
+- [x] **Step 1: Update README Windows section**
 
 Replace the current "Windows beginner start" section with:
 
@@ -569,7 +569,7 @@ python -m gui_app.app
 This is still a source-folder launcher, not a packaged `.exe`. A true Windows app or installer is a future improvement.
 ````
 
-- [ ] **Step 2: Verify README contains required support text**
+- [x] **Step 2: Verify README contains required support text**
 
 Run:
 
@@ -579,7 +579,7 @@ Select-String -Path README.md -Pattern ".mykamus_vendor|myKamus_setup.log|--forc
 
 Expected: all five patterns appear.
 
-- [ ] **Step 3: Commit README docs**
+- [x] **Step 3: Commit README docs**
 
 Run:
 
@@ -597,7 +597,7 @@ Expected: commit includes only `README.md`.
 **Files:**
 - Modify as needed: `gui_app/preflight.py`, `tests/test_gui_preflight.py`, `Start myKamus.bat`, `README.md`
 
-- [ ] **Step 1: Run focused tests**
+- [x] **Step 1: Run focused tests**
 
 Run:
 
@@ -607,7 +607,7 @@ python -B -m unittest discover -s tests -p test_gui_preflight.py
 
 Expected: all preflight tests pass.
 
-- [ ] **Step 2: Run full test suite**
+- [x] **Step 2: Run full test suite**
 
 Run:
 
@@ -617,7 +617,7 @@ python -B -m unittest discover -s tests
 
 Expected: all tests pass. Existing environment may report one skipped Qt dependency test depending on PySide6 availability.
 
-- [ ] **Step 3: Compile changed Python file**
+- [x] **Step 3: Compile changed Python file**
 
 Run:
 
@@ -627,7 +627,7 @@ python -m py_compile gui_app\preflight.py
 
 Expected: command exits `0`.
 
-- [ ] **Step 4: Check final git state**
+- [x] **Step 4: Check final git state**
 
 Run:
 
@@ -637,7 +637,7 @@ git status --short --branch
 
 Expected: clean working tree on the implementation branch.
 
-- [ ] **Step 5: Request code review**
+- [x] **Step 5: Request code review**
 
 Use `superpowers:requesting-code-review` over the implementation range. Review should check:
 
@@ -680,3 +680,4 @@ Placeholder scan:
 Type and name consistency:
 
 - `VENDOR_PATH`, `SETUP_LOG_PATH`, `prepend_vendor_path`, `missing_dependency_imports`, `install_local_dependencies`, `write_setup_log`, `append_final_import_check`, `dependency_failure_message`, and `ensure_dependencies` are introduced before later tasks rely on them.
+

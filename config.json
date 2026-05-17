@@ -9,7 +9,7 @@
   "sentence_limit": 4,
   "gui": {
     "always_on_top": true,
-    "compact_mode": false,
+    "compact_mode": true,
     "window_size": "520x1361",
     "window_position": "+2039+0",
     "load_all_sentence_limit": 200,

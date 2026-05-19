@@ -75,6 +75,15 @@ class BackgroundTaskRunnerTests(unittest.TestCase):
         self.assertEqual("boom", message["payload"]["error"])
         self.assertIn("RuntimeError: boom", message["payload"]["traceback"])
 
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            if runner._threads == {} and runner._cancel_events == {}:
+                break
+            time.sleep(0.01)
+
+        self.assertEqual({}, runner._threads)
+        self.assertEqual({}, runner._cancel_events)
+
     def test_cancel_sets_event_for_running_task(self):
         message_queue = queue.Queue()
         runner = BackgroundTaskRunner(message_queue=message_queue)

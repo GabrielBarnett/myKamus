@@ -1,4 +1,6 @@
+import threading
 import unittest
+from unittest import mock
 
 
 def _create_root(test_case):
@@ -131,15 +133,71 @@ class TkWidgetsTests(unittest.TestCase):
 
 
 class _BackendStub:
-    def __init__(self, *, config=None, indexes_ready=True):
+    def __init__(self, *, config=None, indexes_ready=True, search_results=None):
         self._config = config or {}
         self._indexes_ready = indexes_ready
+        self._search_results = search_results or {}
+        self.search_calls = []
 
     def load_config(self):
         return self._config
 
     def indexes_are_ready(self):
         return self._indexes_ready
+
+    def search(self, query, sentence_limit):
+        self.search_calls.append((query, sentence_limit))
+        template = self._search_results.get(query)
+        if template is None:
+            template = {
+                "query": query,
+                "message": None,
+                "definitions": [query.upper()] if query else [],
+                "red_book_definitions": [],
+                "sentences": [
+                    {
+                        "index": 1,
+                        "match": query,
+                        "translation": query.upper(),
+                        "matched_language": "id",
+                    }
+                ]
+                if query
+                else [],
+                "sentences_truncated": False,
+            }
+        result = dict(template)
+        result.setdefault("query", query)
+        result.setdefault("message", None)
+        result.setdefault("definitions", [])
+        result.setdefault("red_book_definitions", [])
+        result.setdefault("sentences", [])
+        result.setdefault("sentences_truncated", False)
+        result["sentence_limit"] = sentence_limit
+        return result
+
+
+def _run_search_immediately(task_runner, *, token, kind, target):
+    try:
+        result = target(threading.Event(), lambda _value: None)
+    except Exception as exc:
+        task_runner.message_queue.put(
+            {
+                "token": token,
+                "kind": kind,
+                "event": "error",
+                "payload": {"error": str(exc)},
+            }
+        )
+    else:
+        task_runner.message_queue.put(
+            {
+                "token": token,
+                "kind": kind,
+                "event": "result",
+                "payload": result,
+            }
+        )
 
 
 class TkMainWindowTests(unittest.TestCase):
@@ -215,6 +273,68 @@ class TkMainWindowTests(unittest.TestCase):
         self.assertIsNone(window.body_frame)
         self.assertIsNone(window.tools_panel)
         self.assertIsNone(window.results_frame)
+
+    def test_manual_search_updates_recent_history_and_status(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(config={"sentence_limit": 4}, indexes_ready=True)
+
+        with mock.patch.object(
+            MyKamusTkWindow,
+            "read_clipboard",
+            return_value="",
+            create=True,
+        ), mock.patch(
+            "gui_app.runtime.tasks.BackgroundTaskRunner.start",
+            new=_run_search_immediately,
+        ):
+            window = MyKamusTkWindow(root, backend)
+            window.drain_messages()
+            window.search_history = []
+            window.status_var.set("Ready.")
+
+            window.search_entry.insert(0, "halo")
+            window.on_manual_search()
+            window.drain_messages()
+
+        self.assertEqual(["halo"], window.search_history)
+        self.assertEqual(
+            "Found 0 Red Book results, 1 dictionary entries, and 1 sentence pairs.",
+            window.status_var.get(),
+        )
+        self.assertEqual(("halo", 4), backend.search_calls[-1])
+
+    def test_clipboard_poll_triggers_search_when_value_changes(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(config={"sentence_limit": 2}, indexes_ready=True)
+
+        with mock.patch.object(
+            MyKamusTkWindow,
+            "read_clipboard",
+            side_effect=["awal", "berubah"],
+            create=True,
+        ), mock.patch(
+            "gui_app.runtime.tasks.BackgroundTaskRunner.start",
+            new=_run_search_immediately,
+        ):
+            window = MyKamusTkWindow(root, backend)
+            window.drain_messages()
+            window.search_history = []
+            window.status_var.set("Ready.")
+
+            window.poll_clipboard()
+            window.drain_messages()
+
+        self.assertEqual("berubah", window.clipboard_value)
+        self.assertEqual([], window.search_history)
+        self.assertEqual(("berubah", 2), backend.search_calls[-1])
+        self.assertEqual(
+            "Found 0 Red Book results, 1 dictionary entries, and 1 sentence pairs.",
+            window.status_var.get(),
+        )
 
 
 if __name__ == "__main__":

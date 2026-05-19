@@ -279,7 +279,7 @@ class MyKamusTkWindow(ttk.Frame):
         )
         self.tools_history_listbox.grid(row=0, column=0, sticky="nsew")
         self.tools_history_listbox.bind("<ButtonRelease-1>", self._on_tools_history_click)
-        self.tools_history_listbox.bind("<Return>", self._on_tools_history_click)
+        self.tools_history_listbox.bind("<Return>", self._on_tools_history_activate)
 
         self.tools_history_scrollbar = ttk.Scrollbar(
             history_frame,
@@ -572,6 +572,26 @@ class MyKamusTkWindow(ttk.Frame):
         return label[: INLINE_HISTORY_LABEL_LIMIT - 3].rstrip() + "..."
 
     def _on_tools_history_click(self, _event=None):
+        if self.tools_history_listbox is None:
+            return "break"
+        if _event is not None and hasattr(_event, "x") and hasattr(_event, "y"):
+            row_index = self.tools_history_listbox.nearest(_event.y)
+            row_bbox = self.tools_history_listbox.bbox(row_index)
+            if row_bbox is None:
+                return "break"
+            row_x, row_y, row_width, row_height = row_bbox
+            within_row = (
+                row_x <= _event.x < row_x + row_width
+                and row_y <= _event.y < row_y + row_height
+            )
+            if not within_row:
+                return "break"
+            query = self.tools_history_listbox.get(row_index)
+            self._run_history_search(query)
+            return "break"
+        return self._on_tools_history_activate()
+
+    def _on_tools_history_activate(self, _event=None):
         if self.tools_history_listbox is None:
             return "break"
         selection = self.tools_history_listbox.curselection()

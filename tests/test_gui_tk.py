@@ -515,6 +515,35 @@ class TkMainWindowTests(unittest.TestCase):
         self.assertEqual("query dua yang cukup panjang", window.search_entry.get())
         self.assertEqual(("query dua yang cukup panjang", 4), backend.search_calls[-1])
 
+    def test_blank_space_click_in_tools_history_does_not_rerun_query(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(indexes_ready=True)
+        window = MyKamusTkWindow(root, backend)
+        window.search_history = [
+            "query satu",
+            "query dua",
+            "query tiga",
+        ]
+        window._render_history()
+        root.update_idletasks()
+        window.tools_history_listbox.selection_set(1)
+
+        event = mock.Mock()
+        event.x = 120
+        event.y = 40
+
+        with mock.patch.object(window.tools_history_listbox, "nearest", return_value=1), mock.patch.object(
+            window.tools_history_listbox,
+            "bbox",
+            return_value=(0, 0, 80, 20),
+        ), mock.patch.object(window, "_run_history_search") as run_history_search:
+            result = window._on_tools_history_click(event)
+
+        self.assertEqual("break", result)
+        run_history_search.assert_not_called()
+
     def test_clipboard_poll_triggers_search_when_value_changes(self):
         from gui_app.tk.main_window import MyKamusTkWindow
 

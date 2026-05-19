@@ -30,6 +30,7 @@ class MyKamusTkWindow(ttk.Frame):
         self.config_path = getattr(backend, "config_path", None)
         self.message_queue = queue.Queue()
         self.task_runner = BackgroundTaskRunner(self.message_queue)
+        self.runner = self.task_runner
         self.style = apply_theme(root)
         self.tools_visible = False
         self.loading_view = None
@@ -38,9 +39,11 @@ class MyKamusTkWindow(ttk.Frame):
         self.search_in_flight = False
         self.queued_search_request = None
         self.pending_searches = {}
-        self.narrow_layout = None
+        self.narrow_layout = False
         self._message_after_id = None
         self._clipboard_after_id = None
+        self._index_error_after_id = None
+        self._closing = False
 
         self.command_frame = None
         self.search_entry = None
@@ -59,6 +62,7 @@ class MyKamusTkWindow(ttk.Frame):
         self.always_on_top_var = None
 
         self._configure_window()
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
         super().__init__(root, style="App.TFrame", padding=16)
         self.columnconfigure(0, weight=1)
@@ -68,6 +72,7 @@ class MyKamusTkWindow(ttk.Frame):
             self.build_main_ui()
         else:
             self.show_loading_view()
+            self.start_index_build()
 
     def _configure_window(self):
         width, height = parse_window_size(self.gui_config.get("window_size"))
@@ -80,7 +85,26 @@ class MyKamusTkWindow(ttk.Frame):
         self.loading_view = LoadingView(self, style="App.TFrame")
         self.loading_view.pack(fill="both", expand=True)
 
+    def start_index_build(self):
+        self.runner.start(
+            token="index-build",
+            kind="index",
+            target=self._run_index_build,
+        )
+        self._schedule_drain_messages(idle=True)
+
+    def _run_index_build(self, cancel_event, emit_progress):
+        def progress_callback(progress):
+            if cancel_event.is_set():
+                return
+            emit_progress(progress)
+
+        self.backend.build_indexes(progress_callback)
+        return {"ready": True}
+
     def build_main_ui(self):
+        if self.command_frame is not None:
+            return
         if self.loading_view is not None:
             self.loading_view.destroy()
             self.loading_view = None
@@ -150,6 +174,8 @@ class MyKamusTkWindow(ttk.Frame):
             self.poll_clipboard_loop,
         )
         self.apply_window_settings()
+        self.narrow_layout = should_use_narrow_layout(self.root.winfo_width())
+        self._layout_tools_panel()
         self.run_search(self.clipboard_value, origin="startup")
 
     def toggle_tools(self):
@@ -159,8 +185,8 @@ class MyKamusTkWindow(ttk.Frame):
             self.tools_panel.grid_remove()
             self.tools_visible = False
         else:
-            self.tools_panel.grid(row=0, column=0, sticky="nsw", padx=(0, 12))
             self.tools_visible = True
+            self._layout_tools_panel()
 
     def read_clipboard(self):
         try:
@@ -253,23 +279,24 @@ class MyKamusTkWindow(ttk.Frame):
         self._message_after_id = None
         self.drain_messages()
 
+    def _cancel_scheduled_callbacks(self):
+        for after_id_name in ("_message_after_id", "_clipboard_after_id", "_index_error_after_id"):
+            after_id = getattr(self, after_id_name)
+            if after_id is None:
+                continue
+            try:
+                self.root.after_cancel(after_id)
+            except tk.TclError:
+                pass
+            setattr(self, after_id_name, None)
+        self.queued_search_request = None
+
     def _on_root_destroy(self, event):
         if event.widget is not self.root:
             return
-        if self._message_after_id is not None:
-            try:
-                self.root.after_cancel(self._message_after_id)
-            except tk.TclError:
-                pass
-            self._message_after_id = None
-        if self._clipboard_after_id is not None:
-            try:
-                self.root.after_cancel(self._clipboard_after_id)
-            except tk.TclError:
-                pass
-            self._clipboard_after_id = None
-        self.queued_search_request = None
-        self.task_runner.cancel_all()
+        self._cancel_scheduled_callbacks()
+        if not self._closing:
+            self.runner.cancel_all()
 
     def drain_messages(self):
         processed_any = False
@@ -280,6 +307,24 @@ class MyKamusTkWindow(ttk.Frame):
                 break
 
             processed_any = True
+            if message.get("kind") == "index":
+                event = message.get("event")
+                payload = message.get("payload") or {}
+                if event == "progress" and self.loading_view is not None:
+                    self.loading_view.update_progress(payload)
+                elif event == "result":
+                    if self.loading_view is not None:
+                        self.loading_view.show_ready()
+                    self.build_main_ui()
+                elif event == "error" and self.loading_view is not None:
+                    self.loading_view.show_error()
+                    if self._index_error_after_id is None:
+                        self._index_error_after_id = self.root.after(
+                            1500,
+                            self._build_main_ui_after_index_error,
+                        )
+                continue
+
             if message.get("kind") != "search":
                 continue
 
@@ -311,6 +356,10 @@ class MyKamusTkWindow(ttk.Frame):
             self._schedule_drain_messages(idle=True)
         else:
             self._schedule_drain_messages()
+
+    def _build_main_ui_after_index_error(self):
+        self._index_error_after_id = None
+        self.build_main_ui()
 
     def finish_search(self, token, result, error=None, load_all=False, origin="manual"):
         if token != self.active_search_token:
@@ -422,15 +471,28 @@ class MyKamusTkWindow(ttk.Frame):
         x_pos, y_pos = parse_window_position(self.gui_config.get("window_position", "+100+100"))
         self.root.geometry(f"{width}x{height}+{x_pos}+{y_pos}")
         if self.always_on_top_var is not None:
-            self.root.attributes("-topmost", self.always_on_top_var.get())
+            self.set_always_on_top(self.always_on_top_var.get())
 
-    def _write_window_config(self):
+    def set_always_on_top(self, enabled):
+        self.root.wm_attributes("-topmost", bool(enabled))
+
+    def write_window_config(self):
         if not self.config_path:
             return
+        always_on_top = (
+            self.always_on_top_var.get()
+            if self.always_on_top_var is not None
+            else self.gui_config.get("always_on_top", True)
+        )
+        compact_mode = (
+            self.compact_mode_var.get()
+            if self.compact_mode_var is not None
+            else self.gui_config.get("compact_mode", False)
+        )
         next_config = build_gui_config_update(
             self.config,
-            always_on_top=self.always_on_top_var.get(),
-            compact_mode=self.compact_mode_var.get(),
+            always_on_top=always_on_top,
+            compact_mode=compact_mode,
             window_size=f"{self.root.winfo_width()}x{self.root.winfo_height()}",
             window_position=f"+{self.root.winfo_x()}+{self.root.winfo_y()}",
         )
@@ -443,4 +505,29 @@ class MyKamusTkWindow(ttk.Frame):
             return
         width = event.width if event is not None else self.root.winfo_width()
         self.narrow_layout = should_use_narrow_layout(width)
-        self._write_window_config()
+        self._layout_tools_panel()
+
+    def _layout_tools_panel(self):
+        if self.tools_panel is None or not self.tools_visible:
+            return
+        self.tools_panel.grid_forget()
+        if self.narrow_layout:
+            self.tools_panel.grid(
+                row=1,
+                column=0,
+                columnspan=2,
+                sticky="ew",
+                pady=(12, 0),
+            )
+        else:
+            self.tools_panel.grid(row=0, column=0, sticky="nsw", padx=(0, 12))
+
+    def on_close(self):
+        if self._closing:
+            return
+        self._closing = True
+        self._cancel_scheduled_callbacks()
+        self.runner.cancel_all()
+        self.runner.join_all(timeout=2)
+        self.write_window_config()
+        self.root.destroy()

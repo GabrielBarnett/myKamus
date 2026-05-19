@@ -12,7 +12,13 @@ def _create_root(test_case):
     except tk.TclError as exc:
         test_case.skipTest("Tk display unavailable: " + str(exc))
     root.withdraw()
-    test_case.addCleanup(root.destroy)
+    def cleanup():
+        try:
+            root.destroy()
+        except tk.TclError:
+            pass
+
+    test_case.addCleanup(cleanup)
     return root
 
 
@@ -168,10 +174,20 @@ class TkWidgetsTests(unittest.TestCase):
 
 
 class _BackendStub:
-    def __init__(self, *, config=None, indexes_ready=True, search_results=None):
+    def __init__(
+        self,
+        *,
+        config=None,
+        indexes_ready=True,
+        search_results=None,
+        build_indexes_callback=None,
+        config_path=None,
+    ):
         self._config = config or {}
         self._indexes_ready = indexes_ready
         self._search_results = search_results or {}
+        self._build_indexes_callback = build_indexes_callback or (lambda progress_callback: None)
+        self.config_path = config_path
         self.search_calls = []
 
     def load_config(self):
@@ -179,6 +195,9 @@ class _BackendStub:
 
     def indexes_are_ready(self):
         return self._indexes_ready
+
+    def build_indexes(self, progress_callback):
+        return self._build_indexes_callback(progress_callback)
 
     def search(self, query, sentence_limit):
         self.search_calls.append((query, sentence_limit))
@@ -244,9 +263,19 @@ class _BlockingSearchBackend(_BackendStub):
         }
 
 
-def _run_search_immediately(task_runner, *, token, kind, target):
+def _run_task_immediately(task_runner, *, token, kind, target):
+    def emit_progress(value):
+        task_runner.message_queue.put(
+            {
+                "token": token,
+                "kind": kind,
+                "event": "progress",
+                "payload": value,
+            }
+        )
+
     try:
-        result = target(threading.Event(), lambda _value: None)
+        result = target(threading.Event(), emit_progress)
     except Exception as exc:
         task_runner.message_queue.put(
             {
@@ -329,8 +358,12 @@ class TkMainWindowTests(unittest.TestCase):
         root = _create_root(self)
         backend = _BackendStub(indexes_ready=False)
 
-        window = MyKamusTkWindow(root, backend)
-        root.update_idletasks()
+        with mock.patch(
+            "gui_app.runtime.tasks.BackgroundTaskRunner.start",
+            return_value=None,
+        ):
+            window = MyKamusTkWindow(root, backend)
+            root.update_idletasks()
 
         self.assertIsInstance(window.loading_view, LoadingView)
         self.assertEqual("pack", window.loading_view.winfo_manager())
@@ -354,7 +387,7 @@ class TkMainWindowTests(unittest.TestCase):
             create=True,
         ), mock.patch(
             "gui_app.runtime.tasks.BackgroundTaskRunner.start",
-            new=_run_search_immediately,
+            new=_run_task_immediately,
         ):
             window = MyKamusTkWindow(root, backend)
             window.drain_messages()
@@ -385,7 +418,7 @@ class TkMainWindowTests(unittest.TestCase):
             create=True,
         ), mock.patch(
             "gui_app.runtime.tasks.BackgroundTaskRunner.start",
-            new=_run_search_immediately,
+            new=_run_task_immediately,
         ):
             window = MyKamusTkWindow(root, backend)
             window.drain_messages()
@@ -445,6 +478,76 @@ class TkMainWindowTests(unittest.TestCase):
         )
         self.assertNotIn("second", [query for query, _limit in backend.search_calls])
         self.assertEqual(["third"], window.search_history)
+
+    def test_index_build_path_swaps_loading_view_for_main_ui(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(
+            config={"sentence_limit": 4, "poll_interval": 0.1, "gui": {}},
+            indexes_ready=False,
+            build_indexes_callback=lambda progress_callback: progress_callback(
+                {
+                    "title": "Building sentence search index...",
+                    "percent": 100.0,
+                    "processed_pages": 1,
+                    "total_pages": 1,
+                }
+            ),
+        )
+
+        with mock.patch.object(
+            MyKamusTkWindow,
+            "read_clipboard",
+            return_value="",
+            create=True,
+        ), mock.patch(
+            "gui_app.runtime.tasks.BackgroundTaskRunner.start",
+            new=_run_task_immediately,
+        ):
+            window = MyKamusTkWindow(root, backend)
+            window.drain_messages()
+            root.update_idletasks()
+
+        self.assertIsNone(window.loading_view)
+        self.assertIsNotNone(window.command_frame)
+        self.assertIsNotNone(window.results_frame)
+
+    def test_resize_sets_narrow_layout_flag(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(
+            config={"sentence_limit": 4, "poll_interval": 0.1, "gui": {}},
+            indexes_ready=True,
+        )
+
+        window = MyKamusTkWindow(root, backend)
+        event = mock.Mock()
+        event.widget = root
+        event.width = 600
+
+        window.on_resize(event)
+
+        self.assertTrue(window.narrow_layout)
+
+    def test_close_cancels_background_tasks_and_writes_config(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(
+            config={"sentence_limit": 4, "poll_interval": 0.1, "gui": {}},
+            indexes_ready=True,
+        )
+        window = MyKamusTkWindow(root, backend)
+        calls = []
+        window.runner.cancel_all = lambda: calls.append("cancel")
+        window.runner.join_all = lambda timeout=2: calls.append("join")
+        window.write_window_config = lambda: calls.append("write")
+
+        window.on_close()
+
+        self.assertEqual(["cancel", "join", "write"], calls)
 
 
 if __name__ == "__main__":

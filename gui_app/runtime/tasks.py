@@ -10,41 +10,41 @@ class BackgroundTaskRunner:
         self._threads = {}
         self._cancel_events = {}
 
+    def _emit_message(self, *, token, kind, event, payload):
+        self.message_queue.put(
+            {
+                "token": token,
+                "kind": kind,
+                "event": event,
+                "payload": payload,
+            }
+        )
+
     def start(self, *, token, kind, target):
         cancel_event = threading.Event()
 
         def emit_progress(value):
-            self.message_queue.put(
-                {
-                    "token": token,
-                    "kind": kind,
-                    "type": "progress",
-                    "value": value,
-                }
-            )
+            self._emit_message(token=token, kind=kind, event="progress", payload=value)
 
         def run_task():
             try:
                 result = target(cancel_event, emit_progress)
             except Exception as exc:
-                self.message_queue.put(
-                    {
-                        "token": token,
-                        "kind": kind,
-                        "type": "error",
+                self._emit_message(
+                    token=token,
+                    kind=kind,
+                    event="error",
+                    payload={
                         "error": str(exc),
                         "traceback": traceback.format_exc(),
-                    }
+                    },
                 )
             else:
-                self.message_queue.put(
-                    {
-                        "token": token,
-                        "kind": kind,
-                        "type": "result",
-                        "value": result,
-                    }
-                )
+                self._emit_message(token=token, kind=kind, event="result", payload=result)
+            finally:
+                with self._lock:
+                    self._threads.pop(token, None)
+                    self._cancel_events.pop(token, None)
 
         thread = threading.Thread(target=run_task, daemon=True, name="gui-task-" + str(token))
         with self._lock:

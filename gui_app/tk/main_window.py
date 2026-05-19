@@ -18,7 +18,7 @@ class MyKamusTkWindow(ttk.Frame):
         self.message_queue = queue.Queue()
         self.task_runner = BackgroundTaskRunner(self.message_queue)
         self.style = apply_theme(root)
-        self.tools_visible = True
+        self.tools_visible = False
         self.loading_view = None
 
         self.command_frame = None
@@ -100,7 +100,6 @@ class MyKamusTkWindow(ttk.Frame):
         self.body_frame.rowconfigure(0, weight=1)
 
         self.tools_panel = ttk.Frame(self.body_frame, style="Surface.TFrame", padding=12)
-        self.tools_panel.grid(row=0, column=0, sticky="nsw", padx=(0, 12))
 
         self.results_frame = ScrollableFrame(self.body_frame, style="Surface.TFrame")
         self.results_frame.grid(row=0, column=1, sticky="nsew")
@@ -108,8 +107,9 @@ class MyKamusTkWindow(ttk.Frame):
     def toggle_tools(self):
         if self.tools_panel is None:
             return
-        self.tools_visible = not self.tools_visible
         if self.tools_visible:
-            self.tools_panel.grid()
-        else:
             self.tools_panel.grid_remove()
+            self.tools_visible = False
+        else:
+            self.tools_panel.grid(row=0, column=0, sticky="nsw", padx=(0, 12))
+            self.tools_visible = True

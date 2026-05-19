@@ -145,15 +145,23 @@ class _BackendStub:
 class TkMainWindowTests(unittest.TestCase):
     def test_main_window_builds_search_first_layout_and_sets_title(self):
         from gui_app.tk.main_window import MyKamusTkWindow
+        from gui_app.runtime.tasks import BackgroundTaskRunner
         from gui_app.tk.widgets import ScrollableFrame
 
         root = _create_root(self)
-        backend = _BackendStub(indexes_ready=True)
+        backend = _BackendStub(
+            config={"gui": {"window_size": "840x620", "window_position": "+44+55"}},
+            indexes_ready=True,
+        )
 
         window = MyKamusTkWindow(root, backend)
         root.update_idletasks()
 
         self.assertEqual("myKamus", root.title())
+        self.assertIsNotNone(window.message_queue)
+        self.assertIsInstance(window.task_runner, BackgroundTaskRunner)
+        self.assertIs(window.message_queue, window.task_runner.message_queue)
+        self.assertEqual("840x620+44+55", root.geometry().split(" ", 1)[0])
         self.assertIsNotNone(window.command_frame)
         self.assertEqual(window.command_frame, window.search_entry.master)
         self.assertEqual(window.command_frame, window.search_button.master)
@@ -174,6 +182,12 @@ class TkMainWindowTests(unittest.TestCase):
         window = MyKamusTkWindow(root, backend)
         root.update_idletasks()
 
+        self.assertFalse(window.tools_visible)
+        self.assertEqual("", window.tools_panel.winfo_manager())
+
+        window.toggle_tools()
+        root.update_idletasks()
+
         self.assertTrue(window.tools_visible)
         self.assertEqual("grid", window.tools_panel.winfo_manager())
 
@@ -183,11 +197,24 @@ class TkMainWindowTests(unittest.TestCase):
         self.assertFalse(window.tools_visible)
         self.assertEqual("", window.tools_panel.winfo_manager())
 
-        window.toggle_tools()
+    def test_main_window_shows_loading_view_until_indexes_are_ready(self):
+        from gui_app.tk.loading_view import LoadingView
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(indexes_ready=False)
+
+        window = MyKamusTkWindow(root, backend)
         root.update_idletasks()
 
-        self.assertTrue(window.tools_visible)
-        self.assertEqual("grid", window.tools_panel.winfo_manager())
+        self.assertIsInstance(window.loading_view, LoadingView)
+        self.assertEqual("pack", window.loading_view.winfo_manager())
+        self.assertIsNone(window.command_frame)
+        self.assertIsNone(window.status_label)
+        self.assertIsNone(window.recent_row_frame)
+        self.assertIsNone(window.body_frame)
+        self.assertIsNone(window.tools_panel)
+        self.assertIsNone(window.results_frame)
 
 
 if __name__ == "__main__":

@@ -25,15 +25,11 @@ class PreflightDetectionTests(unittest.TestCase):
         self.assertGreater(gui_index, pythonpath_index)
         self.assertGreater(gui_index, delayed_pythonpath_index)
 
-    def test_requirement_imports_matches_tk_dependency_set(self):
-        self.assertEqual(
-            {
-                "keyboard": "keyboard",
-                "pypdf": "pypdf",
-                "pyperclip": "pyperclip",
-            },
-            preflight.REQUIREMENT_IMPORTS,
-        )
+    def test_requirement_imports_align_with_checked_in_requirements(self):
+        checked_in_requirements = preflight.read_requirements(preflight.REQUIREMENTS_PATH)
+
+        self.assertEqual(checked_in_requirements, list(preflight.REQUIREMENT_IMPORTS))
+        self.assertTrue(all(preflight.REQUIREMENT_IMPORTS[requirement] for requirement in checked_in_requirements))
 
     def test_read_requirements_ignores_blank_lines_and_comments(self):
         with tempfile.TemporaryDirectory() as temp_dir:

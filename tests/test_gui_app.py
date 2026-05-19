@@ -16,15 +16,16 @@ class GuiAppImportCoverageTests(unittest.TestCase):
 
     def test_main_creates_tk_root_backend_window_and_enters_mainloop(self):
         root = mock.Mock()
+        tk_module = mock.Mock()
+        tk_module.Tk.return_value = root
 
-        with mock.patch.object(gui_app, "require_tk") as require_tk, \
-                mock.patch.object(gui_app.tk, "Tk", return_value=root) as tk_constructor, \
+        with mock.patch.object(gui_app, "TK_AVAILABLE", True), \
+                mock.patch.object(gui_app, "tk", tk_module), \
                 mock.patch.object(gui_app, "GuiBackend", autospec=True) as backend_class, \
                 mock.patch.object(gui_app, "MyKamusTkWindow", autospec=True) as window_class:
             gui_app.main()
 
-        require_tk.assert_called_once_with()
-        tk_constructor.assert_called_once_with()
+        tk_module.Tk.assert_called_once_with()
         backend_class.assert_called_once_with()
         window_class.assert_called_once_with(root, backend_class.return_value)
         root.mainloop.assert_called_once_with()

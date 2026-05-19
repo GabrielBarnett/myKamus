@@ -1,5 +1,9 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest import mock
 
+from gui_app.core import backend, config_store
 from gui_app.core.view_model import (
     HISTORY_LIMIT,
     build_result_view_model,
@@ -62,6 +66,61 @@ class GuiCoreViewModelTests(unittest.TestCase):
 
     def test_parse_window_size_enforces_minimums(self):
         self.assertEqual((520, 420), parse_window_size("300x200"))
+
+
+class GuiCoreConfigStoreTests(unittest.TestCase):
+    def test_build_gui_config_update_preserves_existing_gui_keys(self):
+        config = {
+            "sentence_limit": 4,
+            "gui": {
+                "theme": "dark",
+                "search_status_delay_ms": 200,
+                "always_on_top": False,
+            },
+        }
+
+        updated = config_store.build_gui_config_update(
+            config,
+            always_on_top=True,
+            compact_mode=False,
+            window_size="900x700",
+            window_position="+120+240",
+        )
+
+        self.assertEqual(
+            {
+                "theme": "dark",
+                "search_status_delay_ms": 200,
+                "always_on_top": True,
+                "compact_mode": False,
+                "window_size": "900x700",
+                "window_position": "+120+240",
+            },
+            updated["gui"],
+        )
+        self.assertEqual(4, updated["sentence_limit"])
+
+    def test_write_config_persists_trailing_newline(self):
+        config = {"gui": {"always_on_top": True}}
+
+        with TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "config.json"
+
+            config_store.write_config(path, config)
+
+            self.assertTrue(path.read_text(encoding="utf-8").endswith("\n"))
+
+
+class GuiBackendTests(unittest.TestCase):
+    def test_search_delegates_to_wrapped_function(self):
+        search_result = {"query": "kata", "sentences": []}
+        search_func = mock.Mock(return_value=search_result)
+        wrapped_backend = backend.GuiBackend(search_for_word_data_func=search_func)
+
+        result = wrapped_backend.search("kata", 7)
+
+        self.assertIs(search_result, result)
+        search_func.assert_called_once_with("kata", sentence_limit=7)
 
 
 if __name__ == "__main__":

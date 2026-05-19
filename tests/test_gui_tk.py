@@ -130,5 +130,65 @@ class TkWidgetsTests(unittest.TestCase):
         )
 
 
+class _BackendStub:
+    def __init__(self, *, config=None, indexes_ready=True):
+        self._config = config or {}
+        self._indexes_ready = indexes_ready
+
+    def load_config(self):
+        return self._config
+
+    def indexes_are_ready(self):
+        return self._indexes_ready
+
+
+class TkMainWindowTests(unittest.TestCase):
+    def test_main_window_builds_search_first_layout_and_sets_title(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+        from gui_app.tk.widgets import ScrollableFrame
+
+        root = _create_root(self)
+        backend = _BackendStub(indexes_ready=True)
+
+        window = MyKamusTkWindow(root, backend)
+        root.update_idletasks()
+
+        self.assertEqual("myKamus", root.title())
+        self.assertIsNotNone(window.command_frame)
+        self.assertEqual(window.command_frame, window.search_entry.master)
+        self.assertEqual(window.command_frame, window.search_button.master)
+        self.assertEqual(window.command_frame, window.tools_button.master)
+        self.assertIs(window.status_label.master, window)
+        self.assertIsNotNone(window.recent_row_frame)
+        self.assertIs(window.body_frame.master, window)
+        self.assertIs(window.tools_panel.master, window.body_frame)
+        self.assertIsInstance(window.results_frame, ScrollableFrame)
+        self.assertIs(window.results_frame.master, window.body_frame)
+
+    def test_tools_panel_visibility_toggles(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(indexes_ready=True)
+
+        window = MyKamusTkWindow(root, backend)
+        root.update_idletasks()
+
+        self.assertTrue(window.tools_visible)
+        self.assertEqual("grid", window.tools_panel.winfo_manager())
+
+        window.toggle_tools()
+        root.update_idletasks()
+
+        self.assertFalse(window.tools_visible)
+        self.assertEqual("", window.tools_panel.winfo_manager())
+
+        window.toggle_tools()
+        root.update_idletasks()
+
+        self.assertTrue(window.tools_visible)
+        self.assertEqual("grid", window.tools_panel.winfo_manager())
+
+
 if __name__ == "__main__":
     unittest.main()

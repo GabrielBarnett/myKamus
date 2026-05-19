@@ -34,6 +34,9 @@ class MyKamusTkWindow(ttk.Frame):
         self.tools_visible = False
         self.loading_view = None
         self.search_generation = 0
+        self.active_search_token = None
+        self.search_in_flight = False
+        self.queued_search_request = None
         self.pending_searches = {}
         self.narrow_layout = None
         self._message_after_id = None
@@ -205,15 +208,31 @@ class MyKamusTkWindow(ttk.Frame):
             load_all,
         )
         self.search_generation += 1
-        token = self.search_generation
-        self.pending_searches[token] = {
+        request = {
+            "token": self.search_generation,
+            "query": query,
+            "sentence_limit": sentence_limit,
             "load_all": load_all,
             "origin": origin,
         }
         self.status_var.set("Searching...")
+        if self.search_in_flight:
+            self.queued_search_request = request
+            return
+
+        self._start_search_request(request)
+
+    def _start_search_request(self, request):
+        token = request["token"]
+        self.active_search_token = token
+        self.search_in_flight = True
+        self.pending_searches[token] = {
+            "load_all": request["load_all"],
+            "origin": request["origin"],
+        }
 
         def search_target(_cancel_event, _emit_progress):
-            return self.backend.search(query, sentence_limit)
+            return self.backend.search(request["query"], request["sentence_limit"])
 
         self.task_runner.start(token=token, kind="search", target=search_target)
         self._schedule_drain_messages(idle=True)
@@ -249,6 +268,7 @@ class MyKamusTkWindow(ttk.Frame):
             except tk.TclError:
                 pass
             self._clipboard_after_id = None
+        self.queued_search_request = None
         self.task_runner.cancel_all()
 
     def drain_messages(self):
@@ -293,6 +313,17 @@ class MyKamusTkWindow(ttk.Frame):
             self._schedule_drain_messages()
 
     def finish_search(self, token, result, error=None, load_all=False, origin="manual"):
+        if token != self.active_search_token:
+            return
+        self.search_in_flight = False
+        self.active_search_token = None
+
+        next_request = self.queued_search_request
+        if next_request is not None:
+            self.queued_search_request = None
+            self._start_search_request(next_request)
+            return
+
         if token != self.search_generation:
             return
         if error is not None:

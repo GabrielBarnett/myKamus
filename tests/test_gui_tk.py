@@ -1,4 +1,5 @@
 import threading
+import time
 import unittest
 from unittest import mock
 
@@ -13,6 +14,26 @@ def _create_root(test_case):
     root.withdraw()
     test_case.addCleanup(root.destroy)
     return root
+
+
+def _wait_for(predicate, timeout=1.5):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return predicate()
+
+
+def _wait_for_tk(root, predicate, timeout=1.5):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        root.update()
+        if predicate():
+            return True
+        time.sleep(0.01)
+    root.update()
+    return predicate()
 
 
 class TkThemeTests(unittest.TestCase):
@@ -131,6 +152,20 @@ class TkWidgetsTests(unittest.TestCase):
             str(widget.canvas.cget("background")),
         )
 
+    def test_selectable_text_shows_scrollbar_for_long_wrapped_content(self):
+        from gui_app.tk import theme
+        from gui_app.tk.widgets import SelectableText
+
+        root = _create_root(self)
+        theme.apply_theme(root)
+        long_text = " ".join(["panjang"] * 160)
+        widget = SelectableText(root, text=long_text, height=4, width=18, style="Surface.TFrame")
+        widget.pack(fill="both", expand=True)
+        root.update_idletasks()
+
+        self.assertEqual("pack", widget.scrollbar.winfo_manager())
+        self.assertLess(float(widget.text_widget.yview()[1]), 1.0)
+
 
 class _BackendStub:
     def __init__(self, *, config=None, indexes_ready=True, search_results=None):
@@ -175,6 +210,38 @@ class _BackendStub:
         result.setdefault("sentences_truncated", False)
         result["sentence_limit"] = sentence_limit
         return result
+
+
+class _BlockingSearchBackend(_BackendStub):
+    def __init__(self, *, config=None):
+        super().__init__(config=config, indexes_ready=True)
+        self.first_started = threading.Event()
+        self.release_first = threading.Event()
+
+    def search(self, query, sentence_limit):
+        self.search_calls.append((query, sentence_limit))
+        if query == "":
+            return {
+                "query": query,
+                "message": None,
+                "definitions": [],
+                "red_book_definitions": [],
+                "sentences": [],
+                "sentences_truncated": False,
+                "sentence_limit": sentence_limit,
+            }
+        if query == "first":
+            self.first_started.set()
+            self.release_first.wait(1.5)
+        return {
+            "query": query,
+            "message": None,
+            "definitions": [query.upper()],
+            "red_book_definitions": [],
+            "sentences": [],
+            "sentences_truncated": False,
+            "sentence_limit": sentence_limit,
+        }
 
 
 def _run_search_immediately(task_runner, *, token, kind, target):
@@ -335,6 +402,49 @@ class TkMainWindowTests(unittest.TestCase):
             "Found 0 Red Book results, 1 dictionary entries, and 1 sentence pairs.",
             window.status_var.get(),
         )
+
+    def test_superseded_searches_are_coalesced_while_async_search_is_in_flight(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BlockingSearchBackend(config={"sentence_limit": 3})
+
+        with mock.patch.object(
+            MyKamusTkWindow,
+            "read_clipboard",
+            return_value="",
+            create=True,
+        ):
+            window = MyKamusTkWindow(root, backend)
+            self.assertTrue(_wait_for(lambda: len(backend.search_calls) >= 1))
+            window.drain_messages()
+
+            window.run_search("first", origin="manual")
+            self.assertTrue(backend.first_started.wait(1.0))
+
+            window.run_search("second", origin="manual")
+            window.run_search("third", origin="manual")
+            time.sleep(0.1)
+
+            self.assertEqual(
+                ["", "first"],
+                [query for query, _limit in backend.search_calls[:2]],
+            )
+            self.assertNotIn("second", [query for query, _limit in backend.search_calls])
+            self.assertNotIn("third", [query for query, _limit in backend.search_calls])
+
+            backend.release_first.set()
+            self.assertTrue(
+                _wait_for_tk(root, lambda: "third" in [query for query, _limit in backend.search_calls])
+            )
+            self.assertTrue(_wait_for_tk(root, lambda: window.status_var.get().startswith("Found ")))
+
+        self.assertEqual(
+            ["", "first", "third"],
+            [query for query, _limit in backend.search_calls if query in {"", "first", "third"}],
+        )
+        self.assertNotIn("second", [query for query, _limit in backend.search_calls])
+        self.assertEqual(["third"], window.search_history)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import unittest
 
-import gui_app
+from gui_app import app as gui_app
 
 
 class GuiAppImportCoverageTests(unittest.TestCase):

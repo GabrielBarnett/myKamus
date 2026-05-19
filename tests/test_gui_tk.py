@@ -549,6 +549,24 @@ class TkMainWindowTests(unittest.TestCase):
 
         self.assertEqual(["cancel", "join", "write"], calls)
 
+    def test_write_window_config_uses_default_config_path_when_backend_omits_one(self):
+        from gui_app.tk import main_window
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(
+            config={"sentence_limit": 4, "poll_interval": 0.1, "gui": {}},
+            indexes_ready=True,
+            config_path=None,
+        )
+        window = MyKamusTkWindow(root, backend)
+
+        with mock.patch.object(main_window, "write_config") as write_config_mock:
+            window.write_window_config()
+
+        write_config_mock.assert_called_once()
+        self.assertEqual("config.json", write_config_mock.call_args.args[0])
+
 
 if __name__ == "__main__":
     unittest.main()

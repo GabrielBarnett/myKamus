@@ -477,8 +477,7 @@ class MyKamusTkWindow(ttk.Frame):
         self.root.wm_attributes("-topmost", bool(enabled))
 
     def write_window_config(self):
-        if not self.config_path:
-            return
+        config_path = self.config_path or "config.json"
         always_on_top = (
             self.always_on_top_var.get()
             if self.always_on_top_var is not None
@@ -496,7 +495,8 @@ class MyKamusTkWindow(ttk.Frame):
             window_size=f"{self.root.winfo_width()}x{self.root.winfo_height()}",
             window_position=f"+{self.root.winfo_x()}+{self.root.winfo_y()}",
         )
-        write_config(self.config_path, next_config)
+        write_config(config_path, next_config)
+        self.config_path = config_path
         self.config = next_config
         self.gui_config = next_config.get("gui", {})
 

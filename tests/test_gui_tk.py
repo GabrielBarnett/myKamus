@@ -42,6 +42,16 @@ def _wait_for_tk(root, predicate, timeout=1.5):
     return predicate()
 
 
+def _read_selectable_texts(container):
+    from gui_app.tk.widgets import SelectableText
+
+    return [
+        child.text_widget.get("1.0", "end-1c")
+        for child in container.winfo_children()
+        if isinstance(child, SelectableText)
+    ]
+
+
 class TkThemeTests(unittest.TestCase):
     def test_apply_theme_returns_style_object(self):
         from gui_app.tk import theme
@@ -619,6 +629,133 @@ class TkMainWindowTests(unittest.TestCase):
         self.assertEqual("ew", str(narrow_grid["sticky"]))
         self.assertEqual("0", str(wide_grid["row"]))
         self.assertEqual("nsw", str(wide_grid["sticky"]))
+
+    def test_tools_panel_controls_have_live_runtime_effects(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(
+            config={
+                "sentence_limit": 4,
+                "poll_interval": 0.1,
+                "gui": {"always_on_top": False, "compact_mode": False},
+            },
+            indexes_ready=True,
+        )
+
+        with mock.patch.object(
+            MyKamusTkWindow,
+            "read_clipboard",
+            return_value="",
+            create=True,
+        ), mock.patch(
+            "gui_app.runtime.tasks.BackgroundTaskRunner.start",
+            new=_run_task_immediately,
+        ):
+            window = MyKamusTkWindow(root, backend)
+            window.drain_messages()
+            window.toggle_tools()
+            root.update_idletasks()
+
+            self.assertIsNotNone(window.always_on_top_button)
+            self.assertIsNotNone(window.compact_mode_button)
+            self.assertIsNotNone(window.load_all_button)
+
+            always_on_top_calls = []
+            window.set_always_on_top = lambda enabled: always_on_top_calls.append(enabled)
+
+            window.always_on_top_button.invoke()
+            self.assertTrue(window.always_on_top_var.get())
+            self.assertEqual([True], always_on_top_calls)
+
+            window.search_entry.insert(0, "halo")
+            window.on_manual_search()
+            window.drain_messages()
+
+            window.compact_mode_button.invoke()
+            window.drain_messages()
+
+        self.assertTrue(window.compact_mode_var.get())
+        self.assertEqual(("halo", 1), backend.search_calls[-1])
+
+    def test_tools_panel_load_all_button_reaches_full_sentence_search(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(
+            config={
+                "sentence_limit": 4,
+                "poll_interval": 0.1,
+                "gui": {"load_all_sentence_limit": 25},
+            },
+            indexes_ready=True,
+        )
+
+        with mock.patch.object(
+            MyKamusTkWindow,
+            "read_clipboard",
+            return_value="",
+            create=True,
+        ), mock.patch(
+            "gui_app.runtime.tasks.BackgroundTaskRunner.start",
+            new=_run_task_immediately,
+        ):
+            window = MyKamusTkWindow(root, backend)
+            window.drain_messages()
+            window.toggle_tools()
+            root.update_idletasks()
+            window.search_entry.insert(0, "halo")
+
+            window.load_all_button.invoke()
+            window.drain_messages()
+
+        self.assertEqual(("halo", 25), backend.search_calls[-1])
+        self.assertEqual("Loaded 1 matching sentence pairs.", window.status_var.get())
+
+    def test_red_book_page_numbers_are_in_rendered_results(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(
+            config={"sentence_limit": 4, "poll_interval": 0.1, "gui": {}},
+            indexes_ready=True,
+            search_results={
+                "merah": {
+                    "query": "merah",
+                    "message": None,
+                    "definitions": [],
+                    "red_book_definitions": [
+                        {
+                            "headword": "merah",
+                            "definition": "red",
+                            "page": 123,
+                        }
+                    ],
+                    "sentences": [],
+                    "sentences_truncated": False,
+                }
+            },
+        )
+
+        with mock.patch.object(
+            MyKamusTkWindow,
+            "read_clipboard",
+            return_value="",
+            create=True,
+        ), mock.patch(
+            "gui_app.runtime.tasks.BackgroundTaskRunner.start",
+            new=_run_task_immediately,
+        ):
+            window = MyKamusTkWindow(root, backend)
+            window.drain_messages()
+            window.search_entry.insert(0, "merah")
+            window.on_manual_search()
+            window.drain_messages()
+
+        rendered_texts = _read_selectable_texts(window.results_content)
+
+        self.assertTrue(any("Page 123" in text for text in rendered_texts))
+        self.assertTrue(any("merah" in text and "red" in text for text in rendered_texts))
 
     def test_write_window_config_uses_default_config_path_when_backend_omits_one(self):
         from gui_app.tk import main_window

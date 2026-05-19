@@ -64,6 +64,9 @@ class MyKamusTkWindow(ttk.Frame):
         self.clipboard_value = ""
         self.compact_mode_var = None
         self.always_on_top_var = None
+        self.always_on_top_button = None
+        self.compact_mode_button = None
+        self.load_all_button = None
 
         self._configure_window()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -168,6 +171,7 @@ class MyKamusTkWindow(ttk.Frame):
         self.clipboard_value = self.read_clipboard()
         self.compact_mode_var = tk.BooleanVar(value=self.gui_config.get("compact_mode", False))
         self.always_on_top_var = tk.BooleanVar(value=self.gui_config.get("always_on_top", True))
+        self._build_tools_panel()
         self.results_content = self.results_frame.content
         self.results_content.columnconfigure(0, weight=1)
         self.search_button.configure(command=self.on_manual_search)
@@ -199,6 +203,39 @@ class MyKamusTkWindow(ttk.Frame):
             self.tools_visible = True
             self._layout_tools_panel()
 
+    def _build_tools_panel(self):
+        self.tools_panel.columnconfigure(0, weight=1)
+        tools_label = ttk.Label(
+            self.tools_panel,
+            text="View",
+            style="Muted.TLabel",
+        )
+        tools_label.grid(row=0, column=0, sticky="w", pady=(0, 8))
+
+        self.always_on_top_button = ttk.Checkbutton(
+            self.tools_panel,
+            text="Always on top",
+            variable=self.always_on_top_var,
+            command=self._on_toggle_always_on_top,
+        )
+        self.always_on_top_button.grid(row=1, column=0, sticky="w")
+
+        self.compact_mode_button = ttk.Checkbutton(
+            self.tools_panel,
+            text="Compact mode",
+            variable=self.compact_mode_var,
+            command=self._on_toggle_compact_mode,
+        )
+        self.compact_mode_button.grid(row=2, column=0, sticky="w", pady=(8, 0))
+
+        self.load_all_button = ttk.Button(
+            self.tools_panel,
+            text="Load All",
+            style="Tool.TButton",
+            command=self._on_load_all,
+        )
+        self.load_all_button.grid(row=3, column=0, sticky="w", pady=(12, 0))
+
     def read_clipboard(self):
         try:
             return self.root.clipboard_get()
@@ -224,6 +261,24 @@ class MyKamusTkWindow(ttk.Frame):
         else:
             self.search_entry.selection_clear()
         return "break"
+
+    def current_query(self):
+        if self.search_entry is not None:
+            query = self.search_entry.get().strip()
+            if query:
+                return query
+        return self.clipboard_value.strip()
+
+    def _on_toggle_always_on_top(self):
+        if self.always_on_top_var is None:
+            return
+        self.set_always_on_top(self.always_on_top_var.get())
+
+    def _on_toggle_compact_mode(self):
+        self.run_search(self.current_query(), origin="button")
+
+    def _on_load_all(self):
+        self.run_search(self.current_query(), load_all=True, origin="load_all")
 
     def poll_clipboard_loop(self):
         self.poll_clipboard()
@@ -468,7 +523,7 @@ class MyKamusTkWindow(ttk.Frame):
                 continue
 
             for item in items:
-                copy_text = item.get("copy_text") or item.get("text") or ""
+                copy_text = self._result_copy_text(item)
                 line_count = max(3, min(8, copy_text.count("\n") + 3))
                 result_text = SelectableText(
                     self.results_content,
@@ -478,6 +533,16 @@ class MyKamusTkWindow(ttk.Frame):
                 )
                 result_text.grid(row=row_index, column=0, sticky="ew", padx=12, pady=(0, 10))
                 row_index += 1
+
+    def _result_copy_text(self, item):
+        if item.get("kind") == "red_book_definition" and item.get("page") not in (None, ""):
+            lines = [
+                item.get("headword", "").strip(),
+                "Page " + str(item["page"]),
+                item.get("definition", "").strip(),
+            ]
+            return "\n".join(line for line in lines if line).strip()
+        return item.get("copy_text") or item.get("text") or ""
 
     def apply_window_settings(self):
         width, height = parse_window_size(self.gui_config.get("window_size", "900x700"))

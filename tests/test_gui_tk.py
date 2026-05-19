@@ -263,6 +263,29 @@ class _BlockingSearchBackend(_BackendStub):
         }
 
 
+class _BlockingIndexBackend(_BackendStub):
+    def __init__(self, *, config=None):
+        super().__init__(config=config, indexes_ready=False)
+        self.build_started = threading.Event()
+        self.build_completed = threading.Event()
+        self.progress_count = 0
+
+    def build_indexes(self, progress_callback):
+        self.build_started.set()
+        for step in range(80):
+            self.progress_count += 1
+            progress_callback(
+                {
+                    "title": "Building sentence search index...",
+                    "percent": min(100.0, float(step + 1)),
+                    "processed_pages": step + 1,
+                    "total_pages": 80,
+                }
+            )
+            time.sleep(0.005)
+        self.build_completed.set()
+
+
 def _run_task_immediately(task_runner, *, token, kind, target):
     def emit_progress(value):
         task_runner.message_queue.put(
@@ -549,6 +572,54 @@ class TkMainWindowTests(unittest.TestCase):
 
         self.assertEqual(["cancel", "join", "write"], calls)
 
+    def test_startup_index_build_is_interrupted_on_close(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BlockingIndexBackend(
+            config={"sentence_limit": 4, "poll_interval": 0.1, "gui": {}},
+        )
+
+        with mock.patch("gui_app.tk.main_window.write_config"):
+            window = MyKamusTkWindow(root, backend)
+            self.assertTrue(backend.build_started.wait(1.0))
+            self.assertGreater(backend.progress_count, 0)
+
+            window.on_close()
+
+        self.assertFalse(backend.build_completed.is_set())
+        self.assertIsNone(window.command_frame)
+
+    def test_tools_panel_reflows_between_narrow_and_wide_layouts(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(
+            config={"sentence_limit": 4, "poll_interval": 0.1, "gui": {}},
+            indexes_ready=True,
+        )
+        window = MyKamusTkWindow(root, backend)
+        window.toggle_tools()
+        root.update_idletasks()
+
+        narrow_event = mock.Mock()
+        narrow_event.widget = root
+        narrow_event.width = 600
+        window.on_resize(narrow_event)
+        narrow_grid = window.tools_panel.grid_info()
+
+        wide_event = mock.Mock()
+        wide_event.widget = root
+        wide_event.width = 900
+        window.on_resize(wide_event)
+        wide_grid = window.tools_panel.grid_info()
+
+        self.assertEqual("1", str(narrow_grid["row"]))
+        self.assertEqual("2", str(narrow_grid["columnspan"]))
+        self.assertEqual("ew", str(narrow_grid["sticky"]))
+        self.assertEqual("0", str(wide_grid["row"]))
+        self.assertEqual("nsw", str(wide_grid["sticky"]))
+
     def test_write_window_config_uses_default_config_path_when_backend_omits_one(self):
         from gui_app.tk import main_window
         from gui_app.tk.main_window import MyKamusTkWindow
@@ -566,6 +637,44 @@ class TkMainWindowTests(unittest.TestCase):
 
         write_config_mock.assert_called_once()
         self.assertEqual("config.json", write_config_mock.call_args.args[0])
+
+    def test_write_window_config_persists_geometry_and_toggle_values(self):
+        from gui_app.tk import main_window
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(
+            config={"sentence_limit": 4, "poll_interval": 0.1, "gui": {"load_all_sentence_limit": 25}},
+            indexes_ready=True,
+            config_path="custom-config.json",
+        )
+        window = MyKamusTkWindow(root, backend)
+        window.always_on_top_var.set(False)
+        window.compact_mode_var.set(True)
+        root.winfo_width = lambda: 777
+        root.winfo_height = lambda: 555
+        root.winfo_x = lambda: 33
+        root.winfo_y = lambda: 44
+
+        with mock.patch.object(main_window, "write_config") as write_config_mock:
+            window.write_window_config()
+
+        write_config_mock.assert_called_once()
+        self.assertEqual("custom-config.json", write_config_mock.call_args.args[0])
+        self.assertEqual(
+            {
+                "sentence_limit": 4,
+                "poll_interval": 0.1,
+                "gui": {
+                    "load_all_sentence_limit": 25,
+                    "always_on_top": False,
+                    "compact_mode": True,
+                    "window_size": "777x555",
+                    "window_position": "+33+44",
+                },
+            },
+            write_config_mock.call_args.args[1],
+        )
 
 
 if __name__ == "__main__":

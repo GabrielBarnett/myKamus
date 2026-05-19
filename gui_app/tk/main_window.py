@@ -21,6 +21,10 @@ from gui_app.tk.theme import apply_theme
 from gui_app.tk.widgets import ScrollableFrame, SectionHeader, SelectableText
 
 
+class _IndexBuildCancelled(Exception):
+    """Internal sentinel for cancelling startup index work."""
+
+
 class MyKamusTkWindow(ttk.Frame):
     def __init__(self, root, backend):
         self.root = root
@@ -96,10 +100,17 @@ class MyKamusTkWindow(ttk.Frame):
     def _run_index_build(self, cancel_event, emit_progress):
         def progress_callback(progress):
             if cancel_event.is_set():
-                return
+                raise _IndexBuildCancelled()
             emit_progress(progress)
 
-        self.backend.build_indexes(progress_callback)
+        try:
+            if cancel_event.is_set():
+                raise _IndexBuildCancelled()
+            self.backend.build_indexes(progress_callback)
+            if cancel_event.is_set():
+                raise _IndexBuildCancelled()
+        except _IndexBuildCancelled:
+            return {"ready": False, "cancelled": True}
         return {"ready": True}
 
     def build_main_ui(self):
@@ -313,6 +324,8 @@ class MyKamusTkWindow(ttk.Frame):
                 if event == "progress" and self.loading_view is not None:
                     self.loading_view.update_progress(payload)
                 elif event == "result":
+                    if payload.get("cancelled") or self._closing:
+                        continue
                     if self.loading_view is not None:
                         self.loading_view.show_ready()
                     self.build_main_ui()

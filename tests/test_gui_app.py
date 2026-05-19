@@ -1,11 +1,11 @@
 import unittest
 
-from gui_app.app import main
+import gui_app
 
 
 class GuiAppImportCoverageTests(unittest.TestCase):
     def test_main_is_callable(self):
-        self.assertTrue(callable(main))
+        self.assertTrue(callable(gui_app.main))
 
 
 if __name__ == "__main__":

@@ -142,7 +142,7 @@ SQLite is the recommended future single-file shipping format for myKamus data. A
 Run the test suite with bytecode disabled to avoid dirtying tracked cache files:
 
 ```bash
-QT_QPA_PLATFORM=offscreen PYTHONDONTWRITEBYTECODE=1 python -B -m unittest discover -s tests
+PYTHONDONTWRITEBYTECODE=1 python -B -m unittest discover -s tests
 ```
 
 ## License and contact

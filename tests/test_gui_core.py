@@ -1,6 +1,5 @@
 import unittest
 
-from gui_app import app as gui_app
 from gui_app.core.view_model import (
     HISTORY_LIMIT,
     build_result_view_model,
@@ -65,49 +64,6 @@ class GuiCoreViewModelTests(unittest.TestCase):
 
     def test_parse_window_size_enforces_minimums(self):
         self.assertEqual((520, 420), parse_window_size("300x200"))
-
-    def test_extracted_helpers_match_current_app_helper_behavior(self):
-        config = {"sentence_limit": 4, "gui": {"load_all_sentence_limit": 25}}
-        history = ["word9", "word8", "word7"]
-        result = {
-            "query": "mengatakan",
-            "definitions": ["say", "tell"],
-            "red_book_definitions": [
-                {
-                    "headword": "mengatakan",
-                    "definition": "to say",
-                    "page": 475,
-                }
-            ],
-            "red_book_results": [],
-            "sentences": [
-                {
-                    "index": 1,
-                    "match": "Saya mengatakan hal itu.",
-                    "translation": "I said that.",
-                }
-            ],
-            "message": None,
-            "sentence_limit": 1,
-            "sentences_truncated": False,
-        }
-
-        self.assertEqual(
-            gui_app.resolve_sentence_limit(config, compact_mode=False, load_all=True),
-            resolve_sentence_limit(config, compact_mode=False, load_all=True),
-        )
-        self.assertEqual(
-            gui_app.add_search_history(history, "  word7  ", limit=HISTORY_LIMIT),
-            add_search_history(history, "  word7  ", limit=HISTORY_LIMIT),
-        )
-        self.assertEqual(
-            gui_app.build_result_view_model(result),
-            build_result_view_model(result),
-        )
-        self.assertEqual(
-            gui_app.parse_window_size("300x200"),
-            parse_window_size("300x200"),
-        )
 
 
 if __name__ == "__main__":

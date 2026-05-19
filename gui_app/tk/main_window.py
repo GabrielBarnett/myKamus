@@ -25,6 +25,11 @@ class _IndexBuildCancelled(Exception):
     """Internal sentinel for cancelling startup index work."""
 
 
+INLINE_HISTORY_LIMIT = 3
+INLINE_HISTORY_LABEL_LIMIT = 20
+TOOLS_HISTORY_HEIGHT = 8
+
+
 class MyKamusTkWindow(ttk.Frame):
     def __init__(self, root, backend):
         self.root = root
@@ -69,6 +74,9 @@ class MyKamusTkWindow(ttk.Frame):
         self.always_on_top_button = None
         self.compact_mode_button = None
         self.load_all_button = None
+        self.tools_history_label = None
+        self.tools_history_listbox = None
+        self.tools_history_scrollbar = None
 
         self._configure_window()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -207,6 +215,7 @@ class MyKamusTkWindow(ttk.Frame):
 
     def _build_tools_panel(self):
         self.tools_panel.columnconfigure(0, weight=1)
+        self.tools_panel.rowconfigure(5, weight=1)
         tools_label = ttk.Label(
             self.tools_panel,
             text="View",
@@ -237,6 +246,49 @@ class MyKamusTkWindow(ttk.Frame):
             command=self._on_load_all,
         )
         self.load_all_button.grid(row=3, column=0, sticky="w", pady=(12, 0))
+
+        self.tools_history_label = ttk.Label(
+            self.tools_panel,
+            text="Recent",
+            style="Muted.TLabel",
+        )
+        self.tools_history_label.grid(row=4, column=0, sticky="w", pady=(16, 8))
+
+        history_background = self.style.lookup("Surface.TFrame", "background") or "#ffffff"
+        history_foreground = self.style.lookup("TLabel", "foreground") or "#1f2933"
+        history_select_background = self.style.lookup("Primary.TButton", "background") or "#3b82f6"
+        history_select_foreground = self.style.lookup("Primary.TButton", "foreground") or "#ffffff"
+
+        history_frame = ttk.Frame(self.tools_panel, style="Surface.TFrame")
+        history_frame.grid(row=5, column=0, sticky="nsew")
+        history_frame.columnconfigure(0, weight=1)
+        history_frame.rowconfigure(0, weight=1)
+
+        self.tools_history_listbox = tk.Listbox(
+            history_frame,
+            activestyle="none",
+            background=history_background,
+            borderwidth=0,
+            exportselection=False,
+            foreground=history_foreground,
+            height=TOOLS_HISTORY_HEIGHT,
+            highlightthickness=0,
+            relief="flat",
+            selectbackground=history_select_background,
+            selectforeground=history_select_foreground,
+        )
+        self.tools_history_listbox.grid(row=0, column=0, sticky="nsew")
+        self.tools_history_listbox.bind("<ButtonRelease-1>", self._on_tools_history_click)
+        self.tools_history_listbox.bind("<Return>", self._on_tools_history_click)
+
+        self.tools_history_scrollbar = ttk.Scrollbar(
+            history_frame,
+            orient="vertical",
+            command=self.tools_history_listbox.yview,
+        )
+        self.tools_history_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.tools_history_listbox.configure(yscrollcommand=self.tools_history_scrollbar.set)
+        self._refresh_tools_history_list()
 
     def read_clipboard(self):
         try:
@@ -496,14 +548,38 @@ class MyKamusTkWindow(ttk.Frame):
         for child in self.recent_row_frame.winfo_children():
             child.destroy()
 
-        for column_index, query in enumerate(self.search_history):
+        for column_index, query in enumerate(self.search_history[:INLINE_HISTORY_LIMIT]):
             history_button = ttk.Button(
                 self.recent_row_frame,
-                text=query,
+                text=self._short_history_label(query),
                 style="Tool.TButton",
                 command=lambda value=query: self._run_history_search(value),
             )
             history_button.grid(row=0, column=column_index, sticky="w", padx=(0, 8))
+        self._refresh_tools_history_list()
+
+    def _refresh_tools_history_list(self):
+        if self.tools_history_listbox is None:
+            return
+        self.tools_history_listbox.delete(0, "end")
+        for query in self.search_history:
+            self.tools_history_listbox.insert("end", query)
+
+    def _short_history_label(self, query):
+        label = query.strip()
+        if len(label) <= INLINE_HISTORY_LABEL_LIMIT:
+            return label
+        return label[: INLINE_HISTORY_LABEL_LIMIT - 3].rstrip() + "..."
+
+    def _on_tools_history_click(self, _event=None):
+        if self.tools_history_listbox is None:
+            return "break"
+        selection = self.tools_history_listbox.curselection()
+        if not selection:
+            return "break"
+        query = self.tools_history_listbox.get(selection[0])
+        self._run_history_search(query)
+        return "break"
 
     def _run_history_search(self, query):
         self.search_entry.delete(0, "end")

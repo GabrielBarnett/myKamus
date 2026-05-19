@@ -438,6 +438,83 @@ class TkMainWindowTests(unittest.TestCase):
         )
         self.assertEqual(("halo", 4), backend.search_calls[-1])
 
+    def test_inline_recent_row_is_capped_when_history_grows(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(indexes_ready=True)
+        window = MyKamusTkWindow(root, backend)
+        window.search_history = [
+            "query satu",
+            "query dua yang cukup panjang",
+            "query tiga",
+            "query empat",
+            "query lima",
+        ]
+
+        window._render_history()
+        root.update_idletasks()
+
+        inline_buttons = window.recent_row_frame.winfo_children()
+        self.assertLess(len(inline_buttons), len(window.search_history))
+
+    def test_tools_panel_exposes_full_recent_history_list(self):
+        import tkinter as tk
+
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(indexes_ready=True)
+        window = MyKamusTkWindow(root, backend)
+        window.search_history = [
+            "query satu",
+            "query dua yang cukup panjang",
+            "query tiga",
+            "query empat",
+            "query lima",
+        ]
+
+        window._render_history()
+        root.update_idletasks()
+
+        self.assertIsInstance(window.tools_history_listbox, tk.Listbox)
+        self.assertEqual(len(window.search_history), window.tools_history_listbox.size())
+        self.assertEqual(tuple(window.search_history), window.tools_history_listbox.get(0, "end"))
+
+    def test_selecting_tools_panel_history_item_reruns_that_query(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(config={"sentence_limit": 4}, indexes_ready=True)
+
+        with mock.patch.object(
+            MyKamusTkWindow,
+            "read_clipboard",
+            return_value="",
+            create=True,
+        ), mock.patch(
+            "gui_app.runtime.tasks.BackgroundTaskRunner.start",
+            new=_run_task_immediately,
+        ):
+            window = MyKamusTkWindow(root, backend)
+            window.drain_messages()
+            window.search_history = [
+                "query satu",
+                "query dua yang cukup panjang",
+                "query tiga",
+            ]
+            window._render_history()
+            root.update_idletasks()
+
+            window.tools_history_listbox.selection_clear(0, "end")
+            window.tools_history_listbox.selection_set(1)
+            window.tools_history_listbox.activate(1)
+            window._on_tools_history_click()
+            window.drain_messages()
+
+        self.assertEqual("query dua yang cukup panjang", window.search_entry.get())
+        self.assertEqual(("query dua yang cukup panjang", 4), backend.search_calls[-1])
+
     def test_clipboard_poll_triggers_search_when_value_changes(self):
         from gui_app.tk.main_window import MyKamusTkWindow
 

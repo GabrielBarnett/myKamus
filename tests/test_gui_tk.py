@@ -582,6 +582,47 @@ class TkMainWindowTests(unittest.TestCase):
 
         self.assertEqual(["cancel", "join", "write"], calls)
 
+    def test_destroyed_root_cleans_up_ready_window_without_on_close(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(
+            config={"sentence_limit": 4, "poll_interval": 0.1, "gui": {}},
+            indexes_ready=True,
+        )
+        window = MyKamusTkWindow(root, backend)
+        calls = []
+        window.runner.cancel_all = lambda: calls.append("cancel")
+        window.runner.join_all = lambda timeout=2: calls.append(("join", timeout))
+
+        root.destroy()
+
+        self.assertEqual(["cancel", ("join", 2)], calls)
+        self.assertIsNone(window.status_var)
+        self.assertIsNone(window.compact_mode_var)
+        self.assertIsNone(window.always_on_top_var)
+
+    def test_destroyed_root_cleans_up_loading_view_without_on_close(self):
+        from gui_app.tk.main_window import MyKamusTkWindow
+
+        root = _create_root(self)
+        backend = _BackendStub(indexes_ready=False)
+
+        with mock.patch(
+            "gui_app.runtime.tasks.BackgroundTaskRunner.start",
+            return_value=None,
+        ):
+            window = MyKamusTkWindow(root, backend)
+
+        calls = []
+        window.runner.cancel_all = lambda: calls.append("cancel")
+        window.runner.join_all = lambda timeout=2: calls.append(("join", timeout))
+
+        root.destroy()
+
+        self.assertEqual(["cancel", ("join", 2)], calls)
+        self.assertIsNone(window.loading_view)
+
     def test_startup_index_build_is_interrupted_on_close(self):
         from gui_app.tk.main_window import MyKamusTkWindow
 

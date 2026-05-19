@@ -48,6 +48,8 @@ class MyKamusTkWindow(ttk.Frame):
         self._clipboard_after_id = None
         self._index_error_after_id = None
         self._closing = False
+        self._runner_stopped = False
+        self._root_destroyed = False
 
         self.command_frame = None
         self.search_entry = None
@@ -70,6 +72,7 @@ class MyKamusTkWindow(ttk.Frame):
 
         self._configure_window()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.root.bind("<Destroy>", self._on_root_destroy, add="+")
 
         super().__init__(root, style="App.TFrame", padding=16)
         self.columnconfigure(0, weight=1)
@@ -182,7 +185,6 @@ class MyKamusTkWindow(ttk.Frame):
         self.root.bind("<Control-f>", lambda event: self.focus_search(select_text=True))
         self.root.bind("<Control-F>", lambda event: self.focus_search(select_text=True))
         self.root.bind("<Configure>", self.on_resize)
-        self.root.bind("<Destroy>", self._on_root_destroy, add="+")
         self.drain_messages()
         self._clipboard_after_id = self.root.after(
             max(100, int(float(self.config.get("poll_interval", 0.1)) * 1000)),
@@ -357,12 +359,37 @@ class MyKamusTkWindow(ttk.Frame):
             setattr(self, after_id_name, None)
         self.queued_search_request = None
 
-    def _on_root_destroy(self, event):
-        if event.widget is not self.root:
+    def _stop_background_tasks(self):
+        if self._runner_stopped:
             return
+        self._runner_stopped = True
+        self.runner.cancel_all()
+        self.runner.join_all(timeout=2)
+
+    def _clear_tk_variables(self, holder):
+        if holder is None:
+            return
+        for attr_name, value in list(vars(holder).items()):
+            if isinstance(value, tk.Variable):
+                setattr(holder, attr_name, None)
+
+    def _cleanup_destroyed_root(self):
+        if self._root_destroyed:
+            return
+        self._root_destroyed = True
         self._cancel_scheduled_callbacks()
-        if not self._closing:
-            self.runner.cancel_all()
+        self._stop_background_tasks()
+        self.pending_searches.clear()
+        self.active_search_token = None
+        self.search_in_flight = False
+        self._clear_tk_variables(self.loading_view)
+        self.loading_view = None
+        self._clear_tk_variables(self)
+
+    def _on_root_destroy(self, event):
+        if event.widget is not self.root or self._root_destroyed:
+            return
+        self._cleanup_destroyed_root()
 
     def drain_messages(self):
         processed_any = False
@@ -605,7 +632,6 @@ class MyKamusTkWindow(ttk.Frame):
             return
         self._closing = True
         self._cancel_scheduled_callbacks()
-        self.runner.cancel_all()
-        self.runner.join_all(timeout=2)
+        self._stop_background_tasks()
         self.write_window_config()
         self.root.destroy()

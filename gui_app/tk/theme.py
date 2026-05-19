@@ -20,14 +20,36 @@ def apply_theme(root):
 
     style.configure(".", background=background, foreground=foreground)
     style.configure("TFrame", background=background)
+    style.configure("App.TFrame", background=background)
     style.configure("Surface.TFrame", background=surface)
     style.configure("TLabel", background=background, foreground=foreground)
     style.configure("Muted.TLabel", background=background, foreground=muted)
     style.configure(
-        "SectionHeader.TLabel",
+        "SectionTitle.TLabel",
         background=background,
         foreground=foreground,
         font=("TkDefaultFont", 11, "bold"),
+    )
+    style.configure(
+        "Primary.TButton",
+        background=accent,
+        foreground="#ffffff",
+        padding=(10, 6),
+    )
+    style.map(
+        "Primary.TButton",
+        background=[("active", "#2563eb")],
+        foreground=[("disabled", "#dbeafe")],
+    )
+    style.configure(
+        "Tool.TButton",
+        background=surface,
+        foreground=foreground,
+        padding=(8, 4),
+    )
+    style.map(
+        "Tool.TButton",
+        background=[("active", "#e5edf5")],
     )
     style.configure(
         "TProgressbar",

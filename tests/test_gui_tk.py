@@ -23,6 +23,10 @@ class TkThemeTests(unittest.TestCase):
 
         self.assertIsNotNone(style)
         self.assertEqual(root, style.master)
+        self.assertEqual("#f5f7fa", style.lookup("App.TFrame", "background"))
+        self.assertEqual("#1f2933", style.lookup("SectionTitle.TLabel", "foreground"))
+        self.assertEqual("#3b82f6", style.lookup("Primary.TButton", "background"))
+        self.assertEqual("#ffffff", style.lookup("Tool.TButton", "background"))
 
 
 class TkLoadingViewTests(unittest.TestCase):
@@ -49,16 +53,15 @@ class TkLoadingViewTests(unittest.TestCase):
 
 
 class TkWidgetsTests(unittest.TestCase):
-    def test_selectable_text_renders_inserted_text(self):
+    def test_selectable_text_accepts_text_initializer_and_is_read_only(self):
         from gui_app.tk.widgets import SelectableText
 
         root = _create_root(self)
-        widget = SelectableText(root, height=4, width=24)
+        widget = SelectableText(root, text="Halo dunia", height=4, width=24)
         widget.pack()
 
-        widget.set_text("Halo dunia")
-
-        self.assertEqual("Halo dunia", widget.get("1.0", "end-1c"))
+        self.assertEqual("Halo dunia", widget.text_widget.get("1.0", "end-1c"))
+        self.assertEqual("disabled", str(widget.text_widget.cget("state")))
 
 
 if __name__ == "__main__":

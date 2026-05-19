@@ -7,6 +7,7 @@ from gui_app.core.view_model import format_bytes
 
 class LoadingView(ttk.Frame):
     def __init__(self, master, **kwargs):
+        kwargs.setdefault("style", "App.TFrame")
         super().__init__(master, padding=24, **kwargs)
         self.columnconfigure(0, weight=1)
 
@@ -15,7 +16,7 @@ class LoadingView(ttk.Frame):
         self.detail_var = StringVar(value="Preparing corpus...")
         self.status_var = StringVar(value="This only happens when the data changes.")
 
-        self.title_label = ttk.Label(self, textvariable=self.title_var, style="SectionHeader.TLabel")
+        self.title_label = ttk.Label(self, textvariable=self.title_var, style="SectionTitle.TLabel")
         self.percent_label = ttk.Label(self, textvariable=self.percent_var)
         self.progress_bar = ttk.Progressbar(self, mode="determinate", maximum=100)
         self.detail_label = ttk.Label(self, textvariable=self.detail_var, style="Muted.TLabel")

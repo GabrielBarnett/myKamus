@@ -75,14 +75,31 @@ class SelectableText(ttk.Frame):
 
 class SectionHeader(ttk.Frame):
     def __init__(self, master, title, subtitle=None, **kwargs):
-        kwargs.setdefault("style", "App.TFrame")
+        frame_style = kwargs.setdefault("style", "App.TFrame")
         super().__init__(master, **kwargs)
         self.columnconfigure(0, weight=1)
+        background = resolve_style_color(self, frame_style, "background")
+        title_foreground = resolve_style_color(self, "SectionTitle.TLabel", "foreground")
+        subtitle_foreground = resolve_style_color(self, "Muted.TLabel", "foreground")
+        title_font = ttk.Style(self).lookup("SectionTitle.TLabel", "font") or ("TkDefaultFont", 11, "bold")
 
-        self.title_label = ttk.Label(self, text=title, style="SectionTitle.TLabel")
+        self.title_label = tk.Label(
+            self,
+            text=title,
+            background=background,
+            foreground=title_foreground,
+            font=title_font,
+            anchor="w",
+        )
         self.title_label.grid(row=0, column=0, sticky="w")
 
         self.subtitle_label = None
-        if subtitle:
-            self.subtitle_label = ttk.Label(self, text=subtitle, style="Muted.TLabel")
+        if subtitle is not None:
+            self.subtitle_label = tk.Label(
+                self,
+                text=str(subtitle),
+                background=background,
+                foreground=subtitle_foreground,
+                anchor="w",
+            )
             self.subtitle_label.grid(row=1, column=0, sticky="w", pady=(2, 0))

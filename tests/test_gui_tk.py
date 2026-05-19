@@ -31,10 +31,12 @@ class TkThemeTests(unittest.TestCase):
 
 class TkLoadingViewTests(unittest.TestCase):
     def test_loading_view_updates_percent_and_status(self):
+        from gui_app.tk import theme
         from gui_app.tk.loading_view import LoadingView
 
         root = _create_root(self)
-        view = LoadingView(root)
+        style = theme.apply_theme(root)
+        view = LoadingView(root, style="Surface.TFrame")
 
         view.update_progress(
             {
@@ -50,9 +52,53 @@ class TkLoadingViewTests(unittest.TestCase):
         self.assertEqual("Building search index...", view.title_var.get())
         self.assertEqual("Processed 1.5 KB of 4.0 KB", view.detail_var.get())
         self.assertEqual("Still working...", view.status_var.get())
+        self.assertEqual(
+            style.lookup("Surface.TFrame", "background"),
+            str(view.title_label.cget("background")),
+        )
+
+    def test_loading_view_handles_partial_bytes_and_state_transitions(self):
+        from gui_app.tk.loading_view import LoadingView
+
+        root = _create_root(self)
+        view = LoadingView(root)
+
+        view.update_progress(
+            {
+                "percent": 5,
+                "processed_bytes": None,
+                "total_bytes": None,
+            }
+        )
+        view.show_error()
+        self.assertEqual(
+            "Index build failed. Searches will use fallback mode.",
+            view.status_var.get(),
+        )
+
+        view.show_ready()
+        self.assertEqual("100%", view.percent_var.get())
+        self.assertEqual("Search index ready.", view.status_var.get())
+        self.assertEqual("Processed 0 bytes of 0 bytes", view.detail_var.get())
 
 
 class TkWidgetsTests(unittest.TestCase):
+    def test_section_header_renders_zero_subtitle_and_surface_background(self):
+        from gui_app.tk import theme
+        from gui_app.tk.widgets import SectionHeader
+
+        root = _create_root(self)
+        style = theme.apply_theme(root)
+        widget = SectionHeader(root, title="Results", subtitle=0, style="Surface.TFrame")
+        widget.pack()
+
+        self.assertIsNotNone(widget.subtitle_label)
+        self.assertEqual("0", str(widget.subtitle_label.cget("text")))
+        self.assertEqual(
+            style.lookup("Surface.TFrame", "background"),
+            str(widget.title_label.cget("background")),
+        )
+
     def test_selectable_text_accepts_text_initializer_and_is_read_only(self):
         from gui_app.tk import theme
         from gui_app.tk.widgets import SelectableText

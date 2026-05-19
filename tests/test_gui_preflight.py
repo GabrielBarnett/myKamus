@@ -25,16 +25,26 @@ class PreflightDetectionTests(unittest.TestCase):
         self.assertGreater(gui_index, pythonpath_index)
         self.assertGreater(gui_index, delayed_pythonpath_index)
 
+    def test_requirement_imports_matches_tk_dependency_set(self):
+        self.assertEqual(
+            {
+                "keyboard": "keyboard",
+                "pypdf": "pypdf",
+                "pyperclip": "pyperclip",
+            },
+            preflight.REQUIREMENT_IMPORTS,
+        )
+
     def test_read_requirements_ignores_blank_lines_and_comments(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             requirements_path = Path(temp_dir) / "requirements.txt"
             requirements_path.write_text(
-                "\n# comment\nkeyboard\npypdf\nPySide6\npyperclip\n",
+                "\n# comment\nkeyboard\npypdf\npyperclip\n",
                 encoding="utf-8",
             )
 
             self.assertEqual(
-                ["keyboard", "pypdf", "PySide6", "pyperclip"],
+                ["keyboard", "pypdf", "pyperclip"],
                 preflight.read_requirements(requirements_path),
             )
 
@@ -61,7 +71,7 @@ class PreflightDetectionTests(unittest.TestCase):
 
             def fake_find_spec(module_name):
                 calls.append((module_name, list(sys.path)))
-                if module_name == "PySide6":
+                if module_name == "pyperclip":
                     return None
                 return FakeSpec()
 
@@ -69,30 +79,30 @@ class PreflightDetectionTests(unittest.TestCase):
             with mock.patch.object(preflight.importlib.util, "find_spec", side_effect=fake_find_spec), \
                     mock.patch.object(preflight.sys, "path", python_path):
                 missing = preflight.missing_dependency_imports(
-                    ["keyboard", "PySide6"],
+                    ["keyboard", "pyperclip"],
                     vendor_path=vendor_path,
                 )
 
-        self.assertEqual(["PySide6"], missing)
+        self.assertEqual(["pyperclip"], missing)
         self.assertTrue(all(call_path[0] == str(vendor_path) for _module, call_path in calls))
         self.assertEqual([str(vendor_path), "global-packages"], python_path)
 
     def test_missing_dependency_imports_rejects_global_only_package(self):
         class FakeSpec:
-            origin = str(Path("C:/global/site-packages/PySide6/__init__.py"))
-            submodule_search_locations = [str(Path("C:/global/site-packages/PySide6"))]
+            origin = str(Path("C:/global/site-packages/pyperclip/__init__.py"))
+            submodule_search_locations = [str(Path("C:/global/site-packages/pyperclip"))]
 
         with tempfile.TemporaryDirectory() as temp_dir:
             vendor_path = Path(temp_dir) / ".mykamus_vendor"
             with mock.patch.object(preflight.importlib.util, "find_spec", return_value=FakeSpec()):
-                missing = preflight.missing_dependency_imports(["PySide6"], vendor_path=vendor_path)
+                missing = preflight.missing_dependency_imports(["pyperclip"], vendor_path=vendor_path)
 
-        self.assertEqual(["PySide6"], missing)
+        self.assertEqual(["pyperclip"], missing)
 
     def test_missing_dependency_imports_accepts_vendor_package(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             vendor_path = Path(temp_dir) / ".mykamus_vendor"
-            package_dir = vendor_path / "PySide6"
+            package_dir = vendor_path / "pyperclip"
             package_dir.mkdir(parents=True)
 
             class FakeSpec:
@@ -100,7 +110,7 @@ class PreflightDetectionTests(unittest.TestCase):
                 submodule_search_locations = [str(package_dir)]
 
             with mock.patch.object(preflight.importlib.util, "find_spec", return_value=FakeSpec()):
-                missing = preflight.missing_dependency_imports(["PySide6"], vendor_path=vendor_path)
+                missing = preflight.missing_dependency_imports(["pyperclip"], vendor_path=vendor_path)
 
         self.assertEqual([], missing)
 
@@ -153,7 +163,7 @@ class PreflightDetectionTests(unittest.TestCase):
 
     def test_ensure_dependencies_does_not_install_when_local_imports_pass(self):
         messages = []
-        with mock.patch.object(preflight, "read_requirements", return_value=["PySide6"]), \
+        with mock.patch.object(preflight, "read_requirements", return_value=["keyboard", "pypdf", "pyperclip"]), \
                 mock.patch.object(preflight, "missing_dependency_imports", return_value=[]), \
                 mock.patch.object(preflight, "install_local_dependencies") as install:
             result = preflight.ensure_dependencies(
@@ -167,11 +177,11 @@ class PreflightDetectionTests(unittest.TestCase):
 
     def test_ensure_dependencies_asks_before_local_reinstall(self):
         messages = []
-        missing_results = [["PySide6"], []]
+        missing_results = [["keyboard", "pypdf", "pyperclip"], []]
 
         with tempfile.TemporaryDirectory() as temp_dir:
             log_path = Path(temp_dir) / "myKamus_setup.log"
-            with mock.patch.object(preflight, "read_requirements", return_value=["PySide6"]), \
+            with mock.patch.object(preflight, "read_requirements", return_value=["keyboard", "pypdf", "pyperclip"]), \
                     mock.patch.object(
                         preflight,
                         "missing_dependency_imports",
@@ -191,8 +201,8 @@ class PreflightDetectionTests(unittest.TestCase):
     def test_ensure_dependencies_fails_when_user_declines_local_install(self):
         messages = []
 
-        with mock.patch.object(preflight, "read_requirements", return_value=["PySide6"]), \
-                mock.patch.object(preflight, "missing_dependency_imports", return_value=["PySide6"]), \
+        with mock.patch.object(preflight, "read_requirements", return_value=["keyboard", "pypdf", "pyperclip"]), \
+                mock.patch.object(preflight, "missing_dependency_imports", return_value=["pyperclip"]), \
                 mock.patch.object(preflight, "install_local_dependencies") as install:
             result = preflight.ensure_dependencies(
                 input_func=lambda _question: "n",
@@ -209,8 +219,8 @@ class PreflightDetectionTests(unittest.TestCase):
     def test_ensure_dependencies_failure_mentions_setup_log(self):
         messages = []
 
-        with mock.patch.object(preflight, "read_requirements", return_value=["PySide6"]), \
-                mock.patch.object(preflight, "missing_dependency_imports", return_value=["PySide6"]), \
+        with mock.patch.object(preflight, "read_requirements", return_value=["keyboard", "pypdf", "pyperclip"]), \
+                mock.patch.object(preflight, "missing_dependency_imports", return_value=["pyperclip"]), \
                 mock.patch.object(preflight, "install_local_dependencies", return_value=False):
             result = preflight.ensure_dependencies(
                 input_func=lambda _question: "y",
@@ -222,11 +232,11 @@ class PreflightDetectionTests(unittest.TestCase):
 
     def test_ensure_dependencies_fails_when_packages_remain_missing_after_local_install(self):
         messages = []
-        missing_results = [["PySide6"], ["PySide6"]]
+        missing_results = [["keyboard", "pypdf", "pyperclip"], ["pyperclip"]]
 
         with tempfile.TemporaryDirectory() as temp_dir:
             log_path = Path(temp_dir) / "myKamus_setup.log"
-            with mock.patch.object(preflight, "read_requirements", return_value=["PySide6"]), \
+            with mock.patch.object(preflight, "read_requirements", return_value=["keyboard", "pypdf", "pyperclip"]), \
                     mock.patch.object(
                         preflight,
                         "missing_dependency_imports",
@@ -242,10 +252,10 @@ class PreflightDetectionTests(unittest.TestCase):
             log_text = log_path.read_text(encoding="utf-8")
 
         self.assertFalse(result)
-        self.assertTrue(any("- PySide6" in message for message in messages))
+        self.assertTrue(any("- pyperclip" in message for message in messages))
         self.assertTrue(any("myKamus_setup.log" in message for message in messages))
         self.assertIn("Final local import check", log_text)
-        self.assertIn("Missing packages: PySide6", log_text)
+        self.assertIn("Missing packages: pyperclip", log_text)
 
     def test_install_dependencies_deletes_vendor_and_uses_force_reinstall_target(self):
         commands = []
@@ -255,7 +265,7 @@ class PreflightDetectionTests(unittest.TestCase):
             vendor_path.mkdir()
             (vendor_path / "stale.txt").write_text("old", encoding="utf-8")
             requirements_path = base_dir / "requirements.txt"
-            requirements_path.write_text("PySide6\n", encoding="utf-8")
+            requirements_path.write_text("keyboard\npypdf\npyperclip\n", encoding="utf-8")
 
             result = preflight.install_local_dependencies(
                 vendor_path=vendor_path,

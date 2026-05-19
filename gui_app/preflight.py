@@ -17,7 +17,6 @@ REQUIRED_DATA_FILES = [
 REQUIREMENT_IMPORTS = {
     "keyboard": "keyboard",
     "pypdf": "pypdf",
-    "PySide6": "PySide6",
     "pyperclip": "pyperclip",
 }
 

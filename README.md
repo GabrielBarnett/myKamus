@@ -6,7 +6,7 @@ It uses open source bitext corpora to provide access to over 50 million example 
 
 ## Features
 
-- Modern PySide6 desktop GUI with manual search, clipboard monitoring, compact mode, recent searches, and always-on-top support.
+- Tkinter desktop GUI with manual search, clipboard monitoring, compact mode, recent searches, and always-on-top support.
 - Fast indexed lookup using local SQLite caches in `.mykamus_cache/`.
 - Bidirectional sentence search: Indonesian queries return English translations, and English queries return Indonesian translations.
 - Red Book Results section for whole-word Indonesian headword definitions extracted from `indonesiandictionary.pdf`.
@@ -20,7 +20,7 @@ On Windows, double-click:
 Start myKamus.bat
 ```
 
-The launcher checks whether local Python packages and bundled data files are ready before starting the GUI. Python packages are installed into `.mykamus_vendor/` inside the myKamus folder, so myKamus does not rely on global PySide6 or global pip package state on corporate computers.
+The launcher checks whether local Python packages and bundled data files are ready before starting the GUI. Python packages are installed into `.mykamus_vendor/` inside the myKamus folder, and the desktop app uses the Tkinter module that normally ships with Python, so myKamus does not depend on a separately installed GUI toolkit or other global pip package state on corporate computers.
 
 If local packages are missing, the launcher asks before deleting `.mykamus_vendor/` and reinstalling dependencies with:
 
@@ -41,6 +41,7 @@ This is still a source-folder launcher, not a packaged `.exe`. A true Windows ap
 ## Prerequisites for Mac, Linux, and development
 
 - Python 3.x
+- Tkinter support in the Python install
 - Git LFS for the bundled dictionary and sentence corpus
 - Python dependencies in `requirements.txt`
 
@@ -62,7 +63,7 @@ git lfs pull
 
 ## GUI usage
 
-The main app is the PySide6 GUI:
+The main app is the Tkinter GUI:
 
 ```bash
 python -m gui_app.app
@@ -130,7 +131,7 @@ Red Book definitions are extracted from `indonesiandictionary.pdf` when the file
 - A capped GUI load-all action to avoid rendering unbounded result sets.
 - A local SQLite sentence index with first-run progress feedback for faster repeated lookup.
 - Red Book headword definitions from `indonesiandictionary.pdf`, indexed separately for whole-word Indonesian lookup.
-- A PySide6 GUI redesign with responsive layout, clear colors, search history, and background worker threads.
+- A Tkinter GUI redesign with responsive layout, clear colors, search history, and background worker threads.
 
 ## Future data bundle
 

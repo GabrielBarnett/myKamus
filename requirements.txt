@@ -1,4 +1,3 @@
 keyboard
 pypdf
-PySide6
 pyperclip

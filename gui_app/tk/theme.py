@@ -3,6 +3,22 @@
 from tkinter import ttk
 
 
+def resolve_style_color(style_or_root, style_name, option, default=""):
+    if isinstance(style_or_root, ttk.Style):
+        style = style_or_root
+    else:
+        style = ttk.Style(style_or_root)
+    value = style.lookup(style_name, option)
+    if value:
+        return value
+    if "." in style_name:
+        widget_style = style_name.split(".", 1)[1]
+        fallback_value = style.lookup(widget_style, option)
+        if fallback_value:
+            return fallback_value
+    return default
+
+
 def apply_theme(root):
     style = ttk.Style(root)
     available_themes = set(style.theme_names())

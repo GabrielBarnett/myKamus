@@ -3,13 +3,22 @@
 import tkinter as tk
 from tkinter import ttk
 
+from gui_app.tk.theme import resolve_style_color
+
 
 class ScrollableFrame(ttk.Frame):
     def __init__(self, master, **kwargs):
+        frame_style = kwargs.get("style", "TFrame")
         super().__init__(master, **kwargs)
-        self.canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0)
+        background = resolve_style_color(self, frame_style, "background")
+        self.canvas = tk.Canvas(
+            self,
+            highlightthickness=0,
+            borderwidth=0,
+            background=background,
+        )
         self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
-        self.content = ttk.Frame(self)
+        self.content = ttk.Frame(self, style=frame_style)
 
         self._content_window = self.canvas.create_window(
             (0, 0),
@@ -40,9 +49,14 @@ class SelectableText(ttk.Frame):
             "wrap": kwargs.pop("wrap", "word"),
         }
         super().__init__(master, style=frame_style, **kwargs)
+        background = resolve_style_color(self, frame_style, "background")
+        foreground = resolve_style_color(self, "TLabel", "foreground")
 
         self.text_widget = tk.Text(
             self,
+            background=background,
+            foreground=foreground,
+            insertbackground=foreground,
             borderwidth=0,
             highlightthickness=0,
             undo=False,

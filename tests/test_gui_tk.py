@@ -54,14 +54,34 @@ class TkLoadingViewTests(unittest.TestCase):
 
 class TkWidgetsTests(unittest.TestCase):
     def test_selectable_text_accepts_text_initializer_and_is_read_only(self):
+        from gui_app.tk import theme
         from gui_app.tk.widgets import SelectableText
 
         root = _create_root(self)
-        widget = SelectableText(root, text="Halo dunia", height=4, width=24)
+        style = theme.apply_theme(root)
+        widget = SelectableText(root, text="Halo dunia", height=4, width=24, style="Surface.TFrame")
         widget.pack()
 
         self.assertEqual("Halo dunia", widget.text_widget.get("1.0", "end-1c"))
         self.assertEqual("disabled", str(widget.text_widget.cget("state")))
+        self.assertEqual(
+            style.lookup("Surface.TFrame", "background"),
+            str(widget.text_widget.cget("background")),
+        )
+
+    def test_scrollable_frame_canvas_uses_themed_background(self):
+        from gui_app.tk import theme
+        from gui_app.tk.widgets import ScrollableFrame
+
+        root = _create_root(self)
+        style = theme.apply_theme(root)
+        widget = ScrollableFrame(root, style="Surface.TFrame")
+        widget.pack()
+
+        self.assertEqual(
+            style.lookup("Surface.TFrame", "background"),
+            str(widget.canvas.cget("background")),
+        )
 
 
 if __name__ == "__main__":

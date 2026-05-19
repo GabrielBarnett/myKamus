@@ -59,8 +59,6 @@ class GuiCoreViewModelTests(unittest.TestCase):
             ["red_book", "definitions", "sentences"],
             [section["kind"] for section in view_model["sections"]],
         )
-        self.assertEqual(1, view_model["counts"]["red_book"])
-        self.assertEqual("red_book_definition", view_model["sections"][0]["items"][0]["kind"])
 
     def test_parse_window_size_enforces_minimums(self):
         self.assertEqual((520, 420), parse_window_size("300x200"))

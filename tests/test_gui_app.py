@@ -1,9 +1,7 @@
+import importlib
 import unittest
-from types import SimpleNamespace
 
-from gui_app.app import main
-
-gui_app = SimpleNamespace(main=main)
+gui_app = importlib.import_module("gui_app.app")
 
 
 class GuiAppImportCoverageTests(unittest.TestCase):

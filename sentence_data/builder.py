@@ -1,7 +1,9 @@
 import json
+import os
 import re
 import shutil
 import sqlite3
+import tempfile
 from pathlib import Path
 
 from .layout import (
@@ -110,14 +112,7 @@ def _finalize_shard(shard_infos, shard_file, shard_path, first_sentence_id, last
     )
 
 
-def build_sentence_dataset(source_path, dataset_dir, target_shard_bytes=TARGET_SHARD_BYTES):
-    source_path = Path(source_path)
-    if target_shard_bytes <= 0:
-        raise SentenceDataValidationError("target_shard_bytes must be greater than zero.")
-
-    paths = resolve_dataset_paths(dataset_dir)
-    if paths.root.exists():
-        shutil.rmtree(paths.root)
+def _build_dataset_in_place(source_path, paths, target_shard_bytes):
     paths.shards_dir.mkdir(parents=True, exist_ok=True)
 
     index_conn = _connect(paths.index)
@@ -214,6 +209,49 @@ def build_sentence_dataset(source_path, dataset_dir, target_shard_bytes=TARGET_S
     }
 
 
+def _replace_dataset_dir(staging_root, destination_root):
+    staging_root = Path(staging_root)
+    destination_root = Path(destination_root)
+    backup_root = destination_root.with_name(destination_root.name + ".bak")
+
+    if backup_root.exists():
+        shutil.rmtree(backup_root)
+
+    if destination_root.exists():
+        os.replace(destination_root, backup_root)
+        try:
+            os.replace(staging_root, destination_root)
+        except Exception:
+            os.replace(backup_root, destination_root)
+            raise
+        else:
+            shutil.rmtree(backup_root)
+    else:
+        os.replace(staging_root, destination_root)
+
+
+def build_sentence_dataset(source_path, dataset_dir, target_shard_bytes=TARGET_SHARD_BYTES):
+    source_path = Path(source_path)
+    if target_shard_bytes <= 0:
+        raise SentenceDataValidationError("target_shard_bytes must be greater than zero.")
+
+    paths = resolve_dataset_paths(dataset_dir)
+    parent_dir = paths.root.parent
+    parent_dir.mkdir(parents=True, exist_ok=True)
+    staging_root = Path(
+        tempfile.mkdtemp(prefix=paths.root.name + ".tmp-", dir=str(parent_dir))
+    )
+    try:
+        staging_paths = resolve_dataset_paths(staging_root)
+        result = _build_dataset_in_place(source_path, staging_paths, target_shard_bytes)
+        _replace_dataset_dir(staging_root, paths.root)
+        return result
+    except Exception:
+        if staging_root.exists():
+            shutil.rmtree(staging_root)
+        raise
+
+
 def verify_sentence_dataset(dataset_dir):
     validated = validate_dataset(dataset_dir)
     paths = validated["paths"]
@@ -224,10 +262,21 @@ def verify_sentence_dataset(dataset_dir):
         lookup_rows = index_conn.execute(
             "SELECT sentence_id, shard_file FROM sentence_lookup ORDER BY sentence_id"
         ).fetchall()
+        term_rows = index_conn.execute(
+            "SELECT sentence_id, term FROM sentence_terms ORDER BY sentence_id, term"
+        ).fetchall()
+    except sqlite3.Error as error:
+        raise SentenceDataValidationError(
+            "Sentence dataset index is missing or inconsistent for sentence_terms."
+        ) from error
     finally:
         index_conn.close()
 
     lookup_map = {sentence_id: shard_file for sentence_id, shard_file in lookup_rows}
+    term_map = {}
+    for sentence_id, term in term_rows:
+        term_map.setdefault(sentence_id, []).append(term)
+
     sentence_count = 0
     shard_row_count = 0
     for shard in manifest["shards"]:
@@ -235,7 +284,7 @@ def verify_sentence_dataset(dataset_dir):
         shard_conn = _connect(paths.shards_dir / shard_file)
         try:
             rows = shard_conn.execute(
-                "SELECT id FROM sentence_pairs ORDER BY id"
+                "SELECT id, english, indonesian FROM sentence_pairs ORDER BY id"
             ).fetchall()
         finally:
             shard_conn.close()
@@ -248,16 +297,24 @@ def verify_sentence_dataset(dataset_dir):
                     f"Sentence shard {shard_file} contains unexpected sentence IDs."
                 )
         shard_row_count += len(sentence_ids)
-        for sentence_id in sentence_ids:
+        for sentence_id, english, indonesian in rows:
             routed_shard_file = lookup_map.get(sentence_id)
             if routed_shard_file != shard_file:
                 raise SentenceDataValidationError(
                     f"Sentence lookup for {sentence_id} does not match shard {shard_file}."
                 )
+            expected_terms = sorted(set(_tokenize(english) + _tokenize(indonesian)))
+            actual_terms = term_map.get(sentence_id, [])
+            if actual_terms != expected_terms:
+                raise SentenceDataValidationError(
+                    f"Sentence terms for {sentence_id} are missing or inconsistent."
+                )
         sentence_count += len(sentence_ids)
 
     if sentence_count != len(lookup_rows):
         raise SentenceDataValidationError("Sentence lookup row count does not match shard row count.")
+    if set(term_map) != set(lookup_map):
+        raise SentenceDataValidationError("Sentence terms do not cover the same sentence IDs as the lookup index.")
 
     return {
         "sentence_count": sentence_count,

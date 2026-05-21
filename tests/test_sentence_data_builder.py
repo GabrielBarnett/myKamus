@@ -53,6 +53,36 @@ class SentenceDataBuilderTests(unittest.TestCase):
         self.assertEqual(first["manifest"]["shards"], second["manifest"]["shards"])
         self.assertEqual(first["sentence_count"], second["sentence_count"])
 
+    def test_failed_rebuild_leaves_existing_dataset_intact(self):
+        original = builder.build_sentence_dataset(self.source_path, self.dataset_dir, target_shard_bytes=300)
+        self.source_path.write_text(
+            "People.\n"
+            "Rakyat?\n\n"
+            "Unmatched trailing line.\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(layout.SentenceDataValidationError):
+            builder.build_sentence_dataset(self.source_path, self.dataset_dir, target_shard_bytes=300)
+
+        verification = builder.verify_sentence_dataset(self.dataset_dir)
+        manifest = layout.validate_dataset(self.dataset_dir)["manifest"]
+        self.assertEqual(original["manifest"], manifest)
+        self.assertEqual(original["sentence_count"], verification["sentence_count"])
+
+    def test_verify_sentence_dataset_rejects_missing_or_inconsistent_sentence_terms(self):
+        builder.build_sentence_dataset(self.source_path, self.dataset_dir, target_shard_bytes=300)
+
+        conn = sqlite3.connect(self.dataset_dir / "sentence_index.sqlite")
+        try:
+            conn.execute("DELETE FROM sentence_terms WHERE term = ? AND sentence_id = ?", ("people", 1))
+            conn.commit()
+        finally:
+            conn.close()
+
+        with self.assertRaises(layout.SentenceDataValidationError):
+            builder.verify_sentence_dataset(self.dataset_dir)
+
 
 if __name__ == "__main__":
     unittest.main()

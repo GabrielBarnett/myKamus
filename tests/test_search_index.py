@@ -173,6 +173,22 @@ class SearchIndexTests(unittest.TestCase):
 
         self.assertFalse(search_index.is_dataset_valid(multi_dataset_dir))
 
+    def test_dataset_with_corrupt_sentence_terms_is_not_valid(self):
+        conn = sqlite3.connect(self.dataset_dir / "sentence_index.sqlite")
+        try:
+            conn.execute(
+                """
+                UPDATE sentence_terms
+                SET term = 'persons'
+                WHERE sentence_id = 1 AND term = 'people'
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.assertFalse(search_index.is_dataset_valid(self.dataset_dir))
+
     def test_search_uses_dataset_without_fts_runtime_dependency(self):
         result = list(
             search_index.search_sentence_index(

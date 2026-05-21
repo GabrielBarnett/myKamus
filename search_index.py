@@ -54,61 +54,122 @@ def _query_row(path, query, parameters=()):
         conn.close()
 
 
-def is_dataset_valid(dataset_dir):
+def _tokenize_text(text):
+    return sorted({token.casefold() for token in TOKEN_PATTERN.findall(text)})
+
+
+def _collect_terms_by_sentence(index_conn, first_sentence_id, last_sentence_id):
+    rows = index_conn.execute(
+        """
+        SELECT sentence_id, term
+        FROM sentence_terms
+        WHERE sentence_id BETWEEN ? AND ?
+        ORDER BY sentence_id, term
+        """,
+        (first_sentence_id, last_sentence_id),
+    ).fetchall()
+    terms_by_sentence = {}
+    for sentence_id, term in rows:
+        terms_by_sentence.setdefault(sentence_id, []).append(term)
+    return terms_by_sentence
+
+
+def _validate_runtime_dataset(dataset_dir):
     try:
         validated = validate_dataset(dataset_dir)
-    except SentenceDataValidationError:
-        return False
-    try:
         paths = validated["paths"]
-        lookup_count = _query_scalar(paths.index, "SELECT COUNT(*) FROM sentence_lookup")
-        term_sentence_count = _query_scalar(
-            paths.index,
-            "SELECT COUNT(DISTINCT sentence_id) FROM sentence_terms",
-        )
-        if not lookup_count or term_sentence_count != lookup_count:
-            return False
+        index_conn = _connect_or_raise(paths.index)
+        try:
+            lookup_count = index_conn.execute(
+                "SELECT COUNT(*) FROM sentence_lookup"
+            ).fetchone()[0]
+            term_sentence_count = index_conn.execute(
+                "SELECT COUNT(DISTINCT sentence_id) FROM sentence_terms"
+            ).fetchone()[0]
+            if not lookup_count or term_sentence_count != lookup_count:
+                raise IndexUnavailableError("Sentence dataset is unavailable.")
 
-        shard_row_count = 0
-        for shard in validated["manifest"]["shards"]:
-            row_count = _query_scalar(
-                paths.shards_dir / shard["file"],
-                "SELECT COUNT(*) FROM sentence_pairs",
-            )
-            if not row_count:
-                return False
-            shard_row_count += row_count
-            expected_count = shard["last_sentence_id"] - shard["first_sentence_id"] + 1
-            lookup_stats = _query_row(
-                paths.index,
-                """
-                SELECT COUNT(*), MIN(sentence_id), MAX(sentence_id)
-                FROM sentence_lookup
-                WHERE shard_file = ?
-                """,
-                (shard["file"],),
-            )
-            if lookup_stats is None:
-                return False
-            lookup_count_for_shard, min_sentence_id, max_sentence_id = lookup_stats
-            if (
-                lookup_count_for_shard != expected_count
-                or min_sentence_id != shard["first_sentence_id"]
-                or max_sentence_id != shard["last_sentence_id"]
-            ):
-                return False
-        if shard_row_count != lookup_count:
-            return False
+            shard_row_count = 0
+            for shard in validated["manifest"]["shards"]:
+                shard_path = paths.shards_dir / shard["file"]
+                row_count = _query_scalar(
+                    shard_path,
+                    "SELECT COUNT(*) FROM sentence_pairs",
+                )
+                if not row_count:
+                    raise IndexUnavailableError("Sentence dataset is unavailable.")
+                shard_row_count += row_count
+
+                expected_count = shard["last_sentence_id"] - shard["first_sentence_id"] + 1
+                lookup_stats = index_conn.execute(
+                    """
+                    SELECT COUNT(*), MIN(sentence_id), MAX(sentence_id)
+                    FROM sentence_lookup
+                    WHERE shard_file = ?
+                    """,
+                    (shard["file"],),
+                ).fetchone()
+                if lookup_stats is None:
+                    raise IndexUnavailableError("Sentence dataset is unavailable.")
+                lookup_count_for_shard, min_sentence_id, max_sentence_id = lookup_stats
+                if (
+                    lookup_count_for_shard != expected_count
+                    or min_sentence_id != shard["first_sentence_id"]
+                    or max_sentence_id != shard["last_sentence_id"]
+                ):
+                    raise IndexUnavailableError("Sentence dataset is unavailable.")
+
+                terms_by_sentence = _collect_terms_by_sentence(
+                    index_conn,
+                    shard["first_sentence_id"],
+                    shard["last_sentence_id"],
+                )
+                shard_conn = _connect_or_raise(shard_path)
+                try:
+                    shard_rows = shard_conn.execute(
+                        """
+                        SELECT id, english, indonesian
+                        FROM sentence_pairs
+                        WHERE id BETWEEN ? AND ?
+                        ORDER BY id
+                        """,
+                        (shard["first_sentence_id"], shard["last_sentence_id"]),
+                    ).fetchall()
+                finally:
+                    shard_conn.close()
+
+                sentence_ids = {row[0] for row in shard_rows}
+                if sentence_ids != set(terms_by_sentence):
+                    raise IndexUnavailableError("Sentence dataset is unavailable.")
+
+                for sentence_id, english, indonesian in shard_rows:
+                    expected_terms = sorted(
+                        set(_tokenize_text(english) + _tokenize_text(indonesian))
+                    )
+                    if terms_by_sentence.get(sentence_id, []) != expected_terms:
+                        raise IndexUnavailableError("Sentence dataset is unavailable.")
+
+            if shard_row_count != lookup_count:
+                raise IndexUnavailableError("Sentence dataset is unavailable.")
+        except sqlite3.Error as error:
+            _translate_sqlite_error(error)
+        finally:
+            index_conn.close()
+        return validated
+    except SentenceDataValidationError as error:
+        raise IndexUnavailableError(str(error)) from error
+
+
+def is_dataset_valid(dataset_dir):
+    try:
+        _validate_runtime_dataset(dataset_dir)
+        return True
     except IndexUnavailableError:
         return False
-    return True
 
 
 def ensure_sentence_dataset(dataset_dir, progress_callback=None):
-    try:
-        validated = validate_dataset(dataset_dir)
-    except SentenceDataValidationError as error:
-        raise IndexUnavailableError(str(error)) from error
+    validated = _validate_runtime_dataset(dataset_dir)
 
     if progress_callback is not None:
         progress_callback(
@@ -154,10 +215,7 @@ def _candidate_ids(index_conn, query):
 
 
 def search_sentence_index(query, limit, dataset_dir):
-    try:
-        validated = validate_dataset(dataset_dir)
-    except SentenceDataValidationError as error:
-        raise IndexUnavailableError(str(error)) from error
+    validated = _validate_runtime_dataset(dataset_dir)
 
     paths = validated["paths"]
     pattern = _build_phrase_pattern(query)

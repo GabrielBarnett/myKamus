@@ -1,5 +1,6 @@
 import json
 import os
+import sqlite3
 from pathlib import Path
 import tempfile
 import unittest
@@ -150,6 +151,28 @@ class SearchFunctionTests(unittest.TestCase):
         self.assertFalse(sf.is_sentence_index_valid())
 
         result = sf.search_for_word_data("people")
+
+        self.assertEqual([], result["sentences"])
+        self.assertEqual(
+            "Example sentences are unavailable right now.",
+            result["sentence_message"],
+        )
+
+    def test_logically_broken_sentence_dataset_returns_unavailable_message(self):
+        conn = sqlite3.connect(self.dataset_dir / "sentence_index.sqlite")
+        try:
+            conn.execute(
+                """
+                UPDATE sentence_terms
+                SET term = 'persons'
+                WHERE sentence_id = 1 AND term = 'people'
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = sf.search_for_word_data("people", sentence_limit=None)
 
         self.assertEqual([], result["sentences"])
         self.assertEqual(

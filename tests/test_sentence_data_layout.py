@@ -132,6 +132,20 @@ class SentenceDataLayoutTests(unittest.TestCase):
                     with self.assertRaises(layout.SentenceDataValidationError):
                         layout.validate_dataset(dataset_dir)
 
+    def test_validate_dataset_rejects_non_object_manifest_root(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dataset_dir = Path(temp_dir) / "data" / "sentences"
+            shards_dir = dataset_dir / "shards"
+            shards_dir.mkdir(parents=True)
+            (dataset_dir / "sentence_index.sqlite").write_bytes(b"index")
+            (dataset_dir / "manifest.json").write_text(
+                json.dumps([]),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(layout.SentenceDataValidationError):
+                layout.validate_dataset(dataset_dir)
+
 
 if __name__ == "__main__":
     unittest.main()

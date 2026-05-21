@@ -79,6 +79,8 @@ def _validate_shard_entry(shard, shards_dir):
 def validate_dataset(dataset_dir):
     paths = resolve_dataset_paths(dataset_dir)
     manifest = load_manifest(paths.manifest)
+    if not isinstance(manifest, dict):
+        raise SentenceDataValidationError("Sentence dataset manifest must be a JSON object.")
     if manifest.get("schema_version") != SCHEMA_VERSION:
         raise SentenceDataValidationError(
             f"Sentence dataset schema version must be {SCHEMA_VERSION}."

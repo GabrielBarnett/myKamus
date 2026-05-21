@@ -18,8 +18,7 @@ BASE_DIR = Path(__file__).resolve().parent
 CONFIG_ENV_VAR = "MYKAMUS_CONFIG"
 CONFIG_DEFAULTS = {
     "dictionary_path": "en-id_dict.txt",
-    "sentences_path": "en-id_sentences.txt",
-    "cache_path": ".mykamus_cache/search.sqlite",
+    "sentence_data_dir": "data/sentences",
     "red_book_pdf_path": "indonesiandictionary.pdf",
     "red_book_cache_path": ".mykamus_cache/red_book.sqlite",
     "red_book_results_limit": 3,
@@ -89,12 +88,8 @@ def data_path(config_key):
     return BASE_DIR / path
 
 
-def sentences_path():
-    return data_path("sentences_path")
-
-
-def cache_path():
-    return data_path("cache_path")
+def sentence_data_dir():
+    return data_path("sentence_data_dir")
 
 
 def red_book_pdf_path():
@@ -114,7 +109,7 @@ def should_index_red_book():
 
 
 def is_sentence_index_valid():
-    return search_index.is_index_valid(sentences_path(), cache_path())
+    return search_index.is_dataset_valid(sentence_data_dir())
 
 
 def is_red_book_index_valid():
@@ -127,9 +122,8 @@ def is_red_book_index_valid():
 
 
 def ensure_sentence_index(progress_callback=None):
-    return search_index.ensure_sentence_index(
-        sentences_path(),
-        cache_path(),
+    return search_index.ensure_sentence_dataset(
+        sentence_data_dir(),
         progress_callback=progress_callback,
     )
 
@@ -234,61 +228,11 @@ def format_red_book_definition_block(index, result):
     return "\n".join(lines)
 
 
-def _iter_non_empty_sentence_lines():
-    with data_path("sentences_path").open(encoding="utf-8", errors="replace") as sentences_file:
-        for line in sentences_file:
-            cleaned = " ".join(line.strip().split())
-            if cleaned:
-                yield cleaned
-
-
-def iter_sentence_pairs():
-    pending_english = None
-    for line in _iter_non_empty_sentence_lines():
-        if pending_english is None:
-            pending_english = line
-        else:
-            yield {
-                "english": pending_english,
-                "indonesian": line,
-            }
-            pending_english = None
-
-
-def iter_matching_sentence_pairs(query):
-    matcher = build_query_matcher(query)
-    for pair in iter_sentence_pairs():
-        english = pair["english"]
-        indonesian = pair["indonesian"]
-        english_matches = matcher(english)
-        indonesian_matches = matcher(indonesian)
-        if not english_matches and not indonesian_matches:
-            continue
-
-        if indonesian_matches:
-            yield {
-                "match": indonesian,
-                "translation": english,
-                "matched_language": "indonesian",
-                "english": english,
-                "indonesian": indonesian,
-            }
-        else:
-            yield {
-                "match": english,
-                "translation": indonesian,
-                "matched_language": "english",
-                "english": english,
-                "indonesian": indonesian,
-            }
-
-
 def iter_matching_indexed_sentence_pairs(query, limit):
     yield from search_index.search_sentence_index(
         query,
         limit,
-        sentences_path(),
-        cache_path(),
+        sentence_data_dir(),
     )
 
 
@@ -365,19 +309,10 @@ def search_for_word_data(query, sentence_limit=_DEFAULT_SENTENCE_LIMIT):
         except Exception:
             result["red_book_definitions"] = []
 
-    sentence_index = 1
     search_limit = None if sentence_limit is None else sentence_limit + 1
-    sentence_iter = iter_matching_sentence_pairs(cleaned_query)
-    if config.get("search", {}).get("use_index", True):
-        try:
-            if is_sentence_index_valid():
-                sentence_iter = iter_matching_indexed_sentence_pairs(cleaned_query, search_limit)
-        except search_index.IndexUnavailableError:
-            sentence_iter = iter_matching_sentence_pairs(cleaned_query)
-        except Exception:
-            sentence_iter = iter_matching_sentence_pairs(cleaned_query)
-
+    sentence_iter = iter_matching_indexed_sentence_pairs(cleaned_query, search_limit)
     emitted = set()
+    sentence_index = 1
     for sentence in sentence_iter:
         pair_key = (sentence["english"], sentence["indonesian"])
         if pair_key in emitted:
@@ -470,8 +405,9 @@ def load_all_sentences(string, sentence_limit=None):
     emitted = set()
     found_any = False
     limit = _coerce_sentence_limit(sentence_limit)
+    search_limit = None if limit is None else limit + 1
     index = 1
-    for sentence in iter_matching_sentence_pairs(query):
+    for sentence in iter_matching_indexed_sentence_pairs(query, search_limit):
         pair_key = (sentence["english"], sentence["indonesian"])
         if pair_key in emitted:
             continue

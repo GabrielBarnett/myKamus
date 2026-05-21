@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from sentence_data.builder import build_sentence_dataset
 import search_functions as sf
 
 
@@ -13,8 +14,8 @@ class SearchFunctionTests(unittest.TestCase):
         self.temp_path = Path(self.temp_dir.name)
         dictionary_path = self.temp_path / "dict.txt"
         sentences_path = self.temp_path / "sentences.txt"
+        dataset_dir = self.temp_path / "sentence_data"
         config_path = self.temp_path / "config.json"
-        cache_path = self.temp_path / "search.sqlite"
 
         dictionary_path.write_text(
             "\t.\tPEOPLE\tRAKYAT\t.\t.\n\n"
@@ -35,12 +36,12 @@ class SearchFunctionTests(unittest.TestCase):
             "Banyak orang tahu.\n",
             encoding="utf-8",
         )
+        build_sentence_dataset(sentences_path, dataset_dir)
         config_path.write_text(
             json.dumps(
                 {
                     "dictionary_path": str(dictionary_path),
-                    "sentences_path": str(sentences_path),
-                    "cache_path": str(cache_path),
+                    "sentence_data_dir": str(dataset_dir),
                     "red_book_enabled": False,
                     "sentence_limit": 4,
                 }

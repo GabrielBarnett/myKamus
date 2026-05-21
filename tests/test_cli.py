@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 
+from sentence_data.builder import build_sentence_dataset
 import red_book_index
 import search_index
 
@@ -18,26 +19,26 @@ class CliTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.temp_path = Path(self.temp_dir.name)
         dictionary_path = self.temp_path / "dict.txt"
-        sentences_path = self.temp_path / "sentences.txt"
+        self.sentences_path = self.temp_path / "sentences.txt"
+        self.dataset_dir = self.temp_path / "sentence_data"
         self.config_path = self.temp_path / "config.json"
-        self.cache_path = self.temp_path / "search.sqlite"
         self.red_book_pdf_path = self.temp_path / "red_book.pdf"
         self.red_book_cache_path = self.temp_path / "red_book.sqlite"
 
         dictionary_path.write_text("\t.\tPEOPLE\tRAKYAT\t.\t.\n", encoding="utf-8")
-        sentences_path.write_text(
+        self.sentences_path.write_text(
             "People.\n"
             "Rakyat?\n\n"
             "Many people know.\n"
             "Banyak orang tahu.\n",
             encoding="utf-8",
         )
+        build_sentence_dataset(self.sentences_path, self.dataset_dir)
         self.config_path.write_text(
             json.dumps(
                 {
                     "dictionary_path": str(dictionary_path),
-                    "sentences_path": str(sentences_path),
-                    "cache_path": str(self.cache_path),
+                    "sentence_data_dir": str(self.dataset_dir),
                     "red_book_pdf_path": str(self.red_book_pdf_path),
                     "red_book_cache_path": str(self.red_book_cache_path),
                     "red_book_results_limit": 3,
@@ -47,7 +48,6 @@ class CliTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        self.sentences_path = sentences_path
         self.red_book_pdf_path.write_bytes(b"%PDF-1.3\nfake fixture\n")
 
     def tearDown(self):
@@ -96,7 +96,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("All example sentences for the word people have been loaded.", result.stdout)
 
     def test_normal_query_uses_existing_index_when_available(self):
-        search_index.ensure_sentence_index(self.sentences_path, self.cache_path)
+        search_index.ensure_sentence_dataset(self.dataset_dir)
 
         result = self.run_cli("people")
 

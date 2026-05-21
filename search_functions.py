@@ -32,9 +32,6 @@ CONFIG_DEFAULTS = {
         "load_all_sentence_limit": 200,
         "search_status_delay_ms": 200,
     },
-    "search": {
-        "use_index": True,
-    },
     "hotkeys": {
         "manual_search": "ctrl+s",
         "load_all_sentences": "l",
@@ -166,9 +163,8 @@ def load_data():
     """
     Backward-compatible loader.
 
-    The dictionary is small enough to keep indexed in memory. The sentence
-    corpus is deliberately streamed per search so app startup does not load the
-    full 711 MB file.
+    The dictionary is small enough to keep indexed in memory. Example sentence
+    lookups now come from the on-disk sentence dataset at search time.
     """
     return load_dictionary(), None
 
@@ -270,6 +266,10 @@ def _coerce_sentence_limit(value):
         return CONFIG_DEFAULTS["sentence_limit"]
 
 
+def _sentence_data_unavailable_message():
+    return "Example sentences are unavailable right now."
+
+
 def search_for_word_data(query, sentence_limit=_DEFAULT_SENTENCE_LIMIT):
     cleaned_query = normalize_query(query)
     result = {
@@ -279,6 +279,7 @@ def search_for_word_data(query, sentence_limit=_DEFAULT_SENTENCE_LIMIT):
         "red_book_results": [],
         "sentences": [],
         "message": None,
+        "sentence_message": None,
         "sentence_limit": None,
         "sentences_truncated": False,
     }
@@ -313,24 +314,27 @@ def search_for_word_data(query, sentence_limit=_DEFAULT_SENTENCE_LIMIT):
     sentence_iter = iter_matching_indexed_sentence_pairs(cleaned_query, search_limit)
     emitted = set()
     sentence_index = 1
-    for sentence in sentence_iter:
-        pair_key = (sentence["english"], sentence["indonesian"])
-        if pair_key in emitted:
-            continue
-        if sentence_limit is not None and len(result["sentences"]) >= sentence_limit:
-            result["sentences_truncated"] = True
-            break
+    try:
+        for sentence in sentence_iter:
+            pair_key = (sentence["english"], sentence["indonesian"])
+            if pair_key in emitted:
+                continue
+            if sentence_limit is not None and len(result["sentences"]) >= sentence_limit:
+                result["sentences_truncated"] = True
+                break
 
-        result["sentences"].append(
-            {
-                "index": sentence_index,
-                "match": sentence["match"],
-                "translation": sentence["translation"],
-                "matched_language": sentence["matched_language"],
-            }
-        )
-        emitted.add(pair_key)
-        sentence_index += 1
+            result["sentences"].append(
+                {
+                    "index": sentence_index,
+                    "match": sentence["match"],
+                    "translation": sentence["translation"],
+                    "matched_language": sentence["matched_language"],
+                }
+            )
+            emitted.add(pair_key)
+            sentence_index += 1
+    except search_index.IndexUnavailableError:
+        result["sentence_message"] = _sentence_data_unavailable_message()
     return result
 
 
@@ -369,6 +373,8 @@ def render_search_result(result):
                 )
             )
             lines.append("")
+    elif result.get("sentence_message"):
+        lines.append(result["sentence_message"])
     else:
         lines.append("No example sentences found.")
 
@@ -407,22 +413,26 @@ def load_all_sentences(string, sentence_limit=None):
     limit = _coerce_sentence_limit(sentence_limit)
     search_limit = None if limit is None else limit + 1
     index = 1
-    for sentence in iter_matching_indexed_sentence_pairs(query, search_limit):
-        pair_key = (sentence["english"], sentence["indonesian"])
-        if pair_key in emitted:
-            continue
-        if limit is not None and len(emitted) >= limit:
-            print(
-                "Showing the first "
-                + str(limit)
-                + " matching sentence pairs. Narrow the query for fewer results."
-            )
-            break
-        print(format_sentence_block(index, sentence["match"], sentence["translation"]))
-        print()
-        emitted.add(pair_key)
-        found_any = True
-        index += 1
+    try:
+        for sentence in iter_matching_indexed_sentence_pairs(query, search_limit):
+            pair_key = (sentence["english"], sentence["indonesian"])
+            if pair_key in emitted:
+                continue
+            if limit is not None and len(emitted) >= limit:
+                print(
+                    "Showing the first "
+                    + str(limit)
+                    + " matching sentence pairs. Narrow the query for fewer results."
+                )
+                break
+            print(format_sentence_block(index, sentence["match"], sentence["translation"]))
+            print()
+            emitted.add(pair_key)
+            found_any = True
+            index += 1
+    except search_index.IndexUnavailableError:
+        print(_sentence_data_unavailable_message())
+        return
 
     if found_any and (limit is None or len(emitted) < limit):
         print("All example sentences for the word " + query + " have been loaded.")

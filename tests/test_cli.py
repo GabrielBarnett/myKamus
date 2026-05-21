@@ -97,12 +97,22 @@ class CliTests(unittest.TestCase):
 
     def test_normal_query_uses_existing_index_when_available(self):
         search_index.ensure_sentence_dataset(self.dataset_dir)
+        self.sentences_path.unlink()
 
         result = self.run_cli("people")
 
         self.assertEqual(0, result.returncode)
         self.assertIn("Match: People.", result.stdout)
         self.assertIn("Translation: Rakyat?", result.stdout)
+
+    def test_cli_handles_missing_sentence_dataset_without_traceback(self):
+        (self.dataset_dir / "manifest.json").unlink()
+
+        result = self.run_cli("people")
+
+        self.assertEqual(0, result.returncode)
+        self.assertEqual("", result.stderr)
+        self.assertIn("Example sentences are unavailable right now.", result.stdout)
 
     def test_cli_prints_red_book_results_when_index_is_available(self):
         conn = red_book_index._connect(self.red_book_cache_path)

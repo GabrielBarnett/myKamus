@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 from sentence_data.builder import build_sentence_dataset
 import search_functions as sf
@@ -13,8 +14,8 @@ class SearchFunctionTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.temp_path = Path(self.temp_dir.name)
         dictionary_path = self.temp_path / "dict.txt"
-        sentences_path = self.temp_path / "sentences.txt"
-        dataset_dir = self.temp_path / "sentence_data"
+        self.sentences_path = self.temp_path / "sentences.txt"
+        self.dataset_dir = self.temp_path / "sentence_data"
         config_path = self.temp_path / "config.json"
 
         dictionary_path.write_text(
@@ -23,7 +24,7 @@ class SearchFunctionTests(unittest.TestCase):
             "\t.\tA BIT\tSEDIKIT\t.\t.\n",
             encoding="utf-8",
         )
-        sentences_path.write_text(
+        self.sentences_path.write_text(
             "People.\n"
             "Rakyat?\n\n"
             "That brat.\n"
@@ -36,12 +37,12 @@ class SearchFunctionTests(unittest.TestCase):
             "Banyak orang tahu.\n",
             encoding="utf-8",
         )
-        build_sentence_dataset(sentences_path, dataset_dir)
+        build_sentence_dataset(self.sentences_path, self.dataset_dir)
         config_path.write_text(
             json.dumps(
                 {
                     "dictionary_path": str(dictionary_path),
-                    "sentence_data_dir": str(dataset_dir),
+                    "sentence_data_dir": str(self.dataset_dir),
                     "red_book_enabled": False,
                     "sentence_limit": 4,
                 }
@@ -67,6 +68,8 @@ class SearchFunctionTests(unittest.TestCase):
         sf.dictionary_index = None
 
     def test_indonesian_query_returns_english_translation(self):
+        self.sentences_path.unlink()
+
         result = sf.search_for_word_data("rakyat")
 
         self.assertEqual("Rakyat?", result["sentences"][0]["match"])
@@ -121,6 +124,35 @@ class SearchFunctionTests(unittest.TestCase):
         self.assertEqual("Rakyat?", result["sentences"][0]["translation"])
         self.assertEqual("english", result["sentences"][0]["matched_language"])
         self.assertTrue(result["sentences_truncated"])
+
+    def test_missing_sentence_dataset_returns_user_facing_result_message(self):
+        for path in self.dataset_dir.rglob("*"):
+            if path.is_file():
+                path.unlink()
+        for path in sorted((p for p in self.dataset_dir.rglob("*") if p.is_dir()), reverse=True):
+            path.rmdir()
+        self.dataset_dir.rmdir()
+
+        result = sf.search_for_word_data("people")
+
+        self.assertEqual([], result["sentences"])
+        self.assertEqual(
+            "Example sentences are unavailable right now.",
+            result["sentence_message"],
+        )
+
+    def test_load_all_sentences_handles_missing_sentence_dataset(self):
+        with mock.patch("builtins.print") as print_mock:
+            for path in self.dataset_dir.rglob("*"):
+                if path.is_file():
+                    path.unlink()
+            for path in sorted((p for p in self.dataset_dir.rglob("*") if p.is_dir()), reverse=True):
+                path.rmdir()
+            self.dataset_dir.rmdir()
+
+            sf.load_all_sentences("people")
+
+        print_mock.assert_any_call("Example sentences are unavailable right now.")
 
 
 if __name__ == "__main__":

@@ -31,6 +31,8 @@ class SearchIndexTests(unittest.TestCase):
         self.assertTrue(search_index.is_dataset_valid(self.dataset_dir))
 
     def test_index_search_is_bidirectional(self):
+        self.source_path.unlink()
+
         english_result = list(
             search_index.search_sentence_index(
                 "people",
@@ -50,6 +52,41 @@ class SearchIndexTests(unittest.TestCase):
         self.assertEqual("Rakyat?", english_result[0]["translation"])
         self.assertEqual("Rakyat?", indonesian_result[0]["match"])
         self.assertEqual("People.", indonesian_result[0]["translation"])
+
+    def test_search_routes_across_multiple_shards_in_sentence_id_order(self):
+        multi_source_path = self.temp_path / "many_sentences.txt"
+        multi_dataset_dir = self.temp_path / "many_sentence_data"
+        multi_source_path.write_text(
+            "Alpha people.\n"
+            "Alpha rakyat.\n\n"
+            "Beta people.\n"
+            "Beta rakyat.\n\n"
+            "Gamma people.\n"
+            "Gamma rakyat.\n\n"
+            "Delta people.\n"
+            "Delta rakyat.\n",
+            encoding="utf-8",
+        )
+        build_sentence_dataset(
+            multi_source_path,
+            multi_dataset_dir,
+            target_shard_bytes=300,
+        )
+        multi_source_path.unlink()
+
+        shard_files = sorted((multi_dataset_dir / "shards").glob("*.sqlite"))
+        self.assertGreaterEqual(len(shard_files), 2)
+
+        result = list(search_index.search_sentence_index("people", None, multi_dataset_dir))
+
+        self.assertEqual(
+            ["Alpha people.", "Beta people.", "Gamma people.", "Delta people."],
+            [row["match"] for row in result],
+        )
+        self.assertEqual(
+            ["Alpha rakyat.", "Beta rakyat.", "Gamma rakyat.", "Delta rakyat."],
+            [row["translation"] for row in result],
+        )
 
     def test_progress_reaches_one_hundred_percent(self):
         progress_values = []

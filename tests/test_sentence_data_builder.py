@@ -2,6 +2,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from sentence_data import builder, layout
 
@@ -82,6 +83,42 @@ class SentenceDataBuilderTests(unittest.TestCase):
 
         with self.assertRaises(layout.SentenceDataValidationError):
             builder.verify_sentence_dataset(self.dataset_dir)
+
+    def test_failed_swap_restores_original_dataset(self):
+        original = builder.build_sentence_dataset(self.source_path, self.dataset_dir, target_shard_bytes=300)
+        self.source_path.write_text(
+            "Updated people.\n"
+            "Rakyat baru?\n\n"
+            "Another pair.\n"
+            "Pasangan lain.\n",
+            encoding="utf-8",
+        )
+        real_replace = builder.os.replace
+        replace_calls = []
+
+        def flaky_replace(source, destination):
+            replace_calls.append((Path(source).name, Path(destination).name))
+            if len(replace_calls) == 2:
+                raise OSError("swap failed")
+            return real_replace(source, destination)
+
+        with mock.patch("sentence_data.builder.os.replace", side_effect=flaky_replace):
+            with self.assertRaises(OSError):
+                builder.build_sentence_dataset(self.source_path, self.dataset_dir, target_shard_bytes=300)
+
+        verification = builder.verify_sentence_dataset(self.dataset_dir)
+        manifest = layout.validate_dataset(self.dataset_dir)["manifest"]
+        self.assertEqual(original["manifest"], manifest)
+        self.assertEqual(original["sentence_count"], verification["sentence_count"])
+        self.assertEqual(
+            [
+                ("sentences", "sentences.bak"),
+                (replace_calls[1][0], "sentences"),
+                ("sentences.bak", "sentences"),
+            ],
+            replace_calls,
+        )
+        self.assertFalse(self.dataset_dir.with_name("sentences.bak").exists())
 
 
 if __name__ == "__main__":

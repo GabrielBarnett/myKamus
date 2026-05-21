@@ -349,6 +349,8 @@ def search_for_word_data(query, sentence_limit=_DEFAULT_SENTENCE_LIMIT):
             emitted.add(pair_key)
             sentence_index += 1
     except search_index.IndexUnavailableError:
+        result["sentences"] = []
+        result["sentences_truncated"] = False
         result["sentence_message"] = _sentence_data_unavailable_message()
     return result
 
@@ -378,7 +380,9 @@ def render_search_result(result):
             lines.append("")
 
     lines.append("Example sentences for " + result["query"].casefold() + " below:")
-    if result["sentences"]:
+    if result.get("sentence_message"):
+        lines.append(result["sentence_message"])
+    elif result["sentences"]:
         for sentence in result["sentences"]:
             lines.append(
                 format_sentence_block(
@@ -388,8 +392,6 @@ def render_search_result(result):
                 )
             )
             lines.append("")
-    elif result.get("sentence_message"):
-        lines.append(result["sentence_message"])
     else:
         lines.append("No example sentences found.")
 

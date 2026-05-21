@@ -240,6 +240,34 @@ class SearchFunctionTests(unittest.TestCase):
         finally:
             legacy_temp_dir.cleanup()
 
+    def test_mid_iteration_failure_returns_unavailable_message_without_partial_sentences(self):
+        def broken_sentence_iter(query, limit):
+            yield {
+                "match": "People.",
+                "translation": "Rakyat?",
+                "matched_language": "english",
+                "english": "People.",
+                "indonesian": "Rakyat?",
+            }
+            raise sf.search_index.IndexUnavailableError("broken during iteration")
+
+        with mock.patch(
+            "search_functions.iter_matching_indexed_sentence_pairs",
+            side_effect=broken_sentence_iter,
+        ):
+            result = sf.search_for_word_data("people", sentence_limit=None)
+
+        rendered = sf.render_search_result(result)
+
+        self.assertEqual([], result["sentences"])
+        self.assertFalse(result["sentences_truncated"])
+        self.assertEqual(
+            "Example sentences are unavailable right now.",
+            result["sentence_message"],
+        )
+        self.assertIn("Example sentences are unavailable right now.", rendered)
+        self.assertNotIn("Match: People.", rendered)
+
     def test_load_all_sentences_handles_missing_sentence_dataset(self):
         with mock.patch("builtins.print") as print_mock:
             for path in self.dataset_dir.rglob("*"):

@@ -1,4 +1,4 @@
-﻿"""Sentence dataset helpers for the sharded myKamus runtime format."""
+"""Sentence dataset helpers for the sharded myKamus runtime format."""
 
 from .layout import (
     DEFAULT_SENTENCE_DATA_DIR,

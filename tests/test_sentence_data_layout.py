@@ -1,4 +1,4 @@
-﻿import json
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -56,6 +56,81 @@ class SentenceDataLayoutTests(unittest.TestCase):
                 layout.validate_dataset(dataset_dir)
 
         self.assertIn("80 MB", str(error.exception))
+
+    def test_validate_dataset_accepts_valid_dataset(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dataset_dir = Path(temp_dir) / "data" / "sentences"
+            shards_dir = dataset_dir / "shards"
+            shards_dir.mkdir(parents=True)
+            (dataset_dir / "sentence_index.sqlite").write_bytes(b"index")
+            shard_path = shards_dir / "sentences_0001.sqlite"
+            shard_path.write_bytes(b"ok")
+            (dataset_dir / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": layout.SCHEMA_VERSION,
+                        "index_file": "sentence_index.sqlite",
+                        "shards": [
+                            {
+                                "file": "sentences_0001.sqlite",
+                                "first_sentence_id": 1,
+                                "last_sentence_id": 1,
+                                "size_bytes": 2,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = layout.validate_dataset(dataset_dir)
+
+        self.assertEqual(dataset_dir, result["paths"].root)
+        self.assertEqual("sentences_0001.sqlite", result["manifest"]["shards"][0]["file"])
+
+    def test_validate_dataset_rejects_malformed_shard_entries(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dataset_dir = Path(temp_dir) / "data" / "sentences"
+            shards_dir = dataset_dir / "shards"
+            shards_dir.mkdir(parents=True)
+            (dataset_dir / "sentence_index.sqlite").write_bytes(b"index")
+            (shards_dir / "sentences_0001.sqlite").write_bytes(b"ok")
+
+            malformed_manifests = [
+                {
+                    "schema_version": layout.SCHEMA_VERSION,
+                    "index_file": "sentence_index.sqlite",
+                    "shards": [
+                        {
+                            "first_sentence_id": 1,
+                            "last_sentence_id": 1,
+                            "size_bytes": 2,
+                        }
+                    ],
+                },
+                {
+                    "schema_version": layout.SCHEMA_VERSION,
+                    "index_file": "sentence_index.sqlite",
+                    "shards": [
+                        {
+                            "file": "sentences_0001.sqlite",
+                            "first_sentence_id": 1,
+                            "last_sentence_id": 1,
+                            "size_bytes": "not-a-number",
+                        }
+                    ],
+                },
+            ]
+
+            for manifest_data in malformed_manifests:
+                (dataset_dir / "manifest.json").write_text(
+                    json.dumps(manifest_data),
+                    encoding="utf-8",
+                )
+
+                with self.subTest(manifest_data=manifest_data):
+                    with self.assertRaises(layout.SentenceDataValidationError):
+                        layout.validate_dataset(dataset_dir)
 
 
 if __name__ == "__main__":

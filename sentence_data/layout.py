@@ -1,4 +1,4 @@
-﻿from dataclasses import dataclass
+from dataclasses import dataclass
 import json
 from pathlib import Path
 
@@ -46,6 +46,36 @@ def load_manifest(manifest_path):
         raise SentenceDataValidationError("Sentence dataset manifest is not valid JSON.") from error
 
 
+def _validate_shard_entry(shard, shards_dir):
+    if not isinstance(shard, dict):
+        raise SentenceDataValidationError("Sentence dataset manifest shard entries must be objects.")
+
+    try:
+        shard_file = shard["file"]
+    except KeyError as error:
+        raise SentenceDataValidationError(
+            "Sentence dataset manifest shard entry is missing a file name."
+        ) from error
+
+    if not isinstance(shard_file, str) or not shard_file:
+        raise SentenceDataValidationError("Sentence dataset manifest shard file must be a non-empty string.")
+
+    shard_path = shards_dir / shard_file
+    if not shard_path.is_file():
+        raise SentenceDataValidationError(f"Sentence shard is missing: {shard_file}")
+
+    actual_size = shard_path.stat().st_size
+    try:
+        declared_size = int(shard.get("size_bytes", actual_size))
+    except (TypeError, ValueError) as error:
+        raise SentenceDataValidationError(
+            f"Sentence dataset manifest shard size_bytes must be an integer for {shard_file}."
+        ) from error
+
+    if actual_size > MAX_SHARD_BYTES or declared_size > MAX_SHARD_BYTES:
+        raise SentenceDataValidationError("Sentence shard exceeds the 80 MB size limit.")
+
+
 def validate_dataset(dataset_dir):
     paths = resolve_dataset_paths(dataset_dir)
     manifest = load_manifest(paths.manifest)
@@ -63,11 +93,6 @@ def validate_dataset(dataset_dir):
         raise SentenceDataValidationError("Sentence dataset manifest does not list any shards.")
 
     for shard in shards:
-        shard_path = paths.shards_dir / shard["file"]
-        if not shard_path.is_file():
-            raise SentenceDataValidationError(f"Sentence shard is missing: {shard['file']}")
-        actual_size = shard_path.stat().st_size
-        if actual_size > MAX_SHARD_BYTES or int(shard.get("size_bytes", actual_size)) > MAX_SHARD_BYTES:
-            raise SentenceDataValidationError("Sentence shard exceeds the 80 MB size limit.")
+        _validate_shard_entry(shard, paths.shards_dir)
 
     return {"paths": paths, "manifest": manifest}

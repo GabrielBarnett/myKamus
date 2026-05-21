@@ -1,4 +1,5 @@
 import sqlite3
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -132,6 +133,45 @@ class SearchIndexTests(unittest.TestCase):
             conn.close()
 
         self.assertFalse(search_index.is_dataset_valid(self.dataset_dir))
+
+    def test_dataset_with_swapped_lookup_shards_is_not_valid(self):
+        multi_source_path = self.temp_path / "swap_sentences.txt"
+        multi_dataset_dir = self.temp_path / "swap_sentence_data"
+        multi_source_path.write_text(
+            "Alpha people.\n"
+            "Alpha rakyat.\n\n"
+            "Beta people.\n"
+            "Beta rakyat.\n\n"
+            "Gamma people.\n"
+            "Gamma rakyat.\n\n"
+            "Delta people.\n"
+            "Delta rakyat.\n",
+            encoding="utf-8",
+        )
+        build_sentence_dataset(
+            multi_source_path,
+            multi_dataset_dir,
+            target_shard_bytes=300,
+        )
+        manifest = json.loads((multi_dataset_dir / "manifest.json").read_text(encoding="utf-8"))
+        first_shard = manifest["shards"][0]
+        second_shard = manifest["shards"][1]
+
+        conn = sqlite3.connect(multi_dataset_dir / "sentence_index.sqlite")
+        try:
+            conn.execute(
+                "UPDATE sentence_lookup SET shard_file = ? WHERE sentence_id = ?",
+                (second_shard["file"], first_shard["last_sentence_id"]),
+            )
+            conn.execute(
+                "UPDATE sentence_lookup SET shard_file = ? WHERE sentence_id = ?",
+                (first_shard["file"], second_shard["first_sentence_id"]),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.assertFalse(search_index.is_dataset_valid(multi_dataset_dir))
 
     def test_search_uses_dataset_without_fts_runtime_dependency(self):
         result = list(

@@ -43,6 +43,17 @@ def _query_scalar(path, query):
         conn.close()
 
 
+def _query_row(path, query, parameters=()):
+    conn = _connect_or_raise(path)
+    try:
+        try:
+            return conn.execute(query, parameters).fetchone()
+        except sqlite3.Error as error:
+            _translate_sqlite_error(error)
+    finally:
+        conn.close()
+
+
 def is_dataset_valid(dataset_dir):
     try:
         validated = validate_dataset(dataset_dir)
@@ -67,6 +78,25 @@ def is_dataset_valid(dataset_dir):
             if not row_count:
                 return False
             shard_row_count += row_count
+            expected_count = shard["last_sentence_id"] - shard["first_sentence_id"] + 1
+            lookup_stats = _query_row(
+                paths.index,
+                """
+                SELECT COUNT(*), MIN(sentence_id), MAX(sentence_id)
+                FROM sentence_lookup
+                WHERE shard_file = ?
+                """,
+                (shard["file"],),
+            )
+            if lookup_stats is None:
+                return False
+            lookup_count_for_shard, min_sentence_id, max_sentence_id = lookup_stats
+            if (
+                lookup_count_for_shard != expected_count
+                or min_sentence_id != shard["first_sentence_id"]
+                or max_sentence_id != shard["last_sentence_id"]
+            ):
+                return False
         if shard_row_count != lookup_count:
             return False
     except IndexUnavailableError:

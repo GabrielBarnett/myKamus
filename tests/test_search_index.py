@@ -195,6 +195,18 @@ class SearchIndexTests(unittest.TestCase):
 
         self.assertFalse(search_index.is_dataset_valid(self.dataset_dir))
 
+    def test_repeated_validation_and_search_reuse_cached_runtime_validation(self):
+        with mock.patch(
+            "search_index._validate_runtime_dataset_fresh",
+            wraps=search_index._validate_runtime_dataset_fresh,
+        ) as validate_fresh:
+            self.assertTrue(search_index.is_dataset_valid(self.dataset_dir))
+            self.assertTrue(search_index.is_dataset_valid(self.dataset_dir))
+            result = list(search_index.search_sentence_index("people", 1, self.dataset_dir))
+
+        self.assertEqual(1, validate_fresh.call_count)
+        self.assertEqual("People.", result[0]["match"])
+
     def test_search_uses_dataset_without_fts_runtime_dependency(self):
         result = list(
             search_index.search_sentence_index(

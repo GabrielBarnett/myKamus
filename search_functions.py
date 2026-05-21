@@ -430,20 +430,19 @@ def load_all_sentences(string, sentence_limit=None):
     limit = _coerce_sentence_limit(sentence_limit)
     search_limit = None if limit is None else limit + 1
     index = 1
+    sentence_blocks = []
+    truncated = False
     try:
         for sentence in iter_matching_indexed_sentence_pairs(query, search_limit):
             pair_key = (sentence["english"], sentence["indonesian"])
             if pair_key in emitted:
                 continue
             if limit is not None and len(emitted) >= limit:
-                print(
-                    "Showing the first "
-                    + str(limit)
-                    + " matching sentence pairs. Narrow the query for fewer results."
-                )
+                truncated = True
                 break
-            print(format_sentence_block(index, sentence["match"], sentence["translation"]))
-            print()
+            sentence_blocks.append(
+                format_sentence_block(index, sentence["match"], sentence["translation"])
+            )
             emitted.add(pair_key)
             found_any = True
             index += 1
@@ -451,6 +450,16 @@ def load_all_sentences(string, sentence_limit=None):
         print(_sentence_data_unavailable_message())
         return
 
+    for sentence_block in sentence_blocks:
+        print(sentence_block)
+        print()
+
+    if truncated:
+        print(
+            "Showing the first "
+            + str(limit)
+            + " matching sentence pairs. Narrow the query for fewer results."
+        )
     if found_any and (limit is None or len(emitted) < limit):
         print("All example sentences for the word " + query + " have been loaded.")
     elif not found_any:

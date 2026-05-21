@@ -281,6 +281,32 @@ class SearchFunctionTests(unittest.TestCase):
 
         print_mock.assert_any_call("Example sentences are unavailable right now.")
 
+    def test_load_all_sentences_mid_iteration_failure_hides_partial_output(self):
+        def broken_sentence_iter(query, limit):
+            yield {
+                "match": "People.",
+                "translation": "Rakyat?",
+                "matched_language": "english",
+                "english": "People.",
+                "indonesian": "Rakyat?",
+            }
+            raise sf.search_index.IndexUnavailableError("broken during iteration")
+
+        with mock.patch(
+            "search_functions.iter_matching_indexed_sentence_pairs",
+            side_effect=broken_sentence_iter,
+        ), mock.patch("builtins.print") as print_mock:
+            sf.load_all_sentences("people", sentence_limit=None)
+
+        printed_values = {
+            args[0]
+            for args, _kwargs in print_mock.call_args_list
+            if args
+        }
+        self.assertIn("Example sentences are unavailable right now.", printed_values)
+        self.assertNotIn("1:\nMatch: People.\nTranslation: Rakyat?", printed_values)
+        self.assertNotIn("", printed_values)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -31,13 +31,14 @@ def _connect_or_raise(path):
         _translate_sqlite_error(error)
 
 
-def _probe_query(path, query):
+def _query_scalar(path, query):
     conn = _connect_or_raise(path)
     try:
         try:
-            conn.execute(query).fetchone()
+            row = conn.execute(query).fetchone()
         except sqlite3.Error as error:
             _translate_sqlite_error(error)
+        return None if row is None else row[0]
     finally:
         conn.close()
 
@@ -49,10 +50,25 @@ def is_dataset_valid(dataset_dir):
         return False
     try:
         paths = validated["paths"]
-        _probe_query(paths.index, "SELECT 1 FROM sentence_lookup LIMIT 1")
-        _probe_query(paths.index, "SELECT 1 FROM sentence_terms LIMIT 1")
+        lookup_count = _query_scalar(paths.index, "SELECT COUNT(*) FROM sentence_lookup")
+        term_sentence_count = _query_scalar(
+            paths.index,
+            "SELECT COUNT(DISTINCT sentence_id) FROM sentence_terms",
+        )
+        if not lookup_count or term_sentence_count != lookup_count:
+            return False
+
+        shard_row_count = 0
         for shard in validated["manifest"]["shards"]:
-            _probe_query(paths.shards_dir / shard["file"], "SELECT 1 FROM sentence_pairs LIMIT 1")
+            row_count = _query_scalar(
+                paths.shards_dir / shard["file"],
+                "SELECT COUNT(*) FROM sentence_pairs",
+            )
+            if not row_count:
+                return False
+            shard_row_count += row_count
+        if shard_row_count != lookup_count:
+            return False
     except IndexUnavailableError:
         return False
     return True

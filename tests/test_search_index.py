@@ -123,6 +123,16 @@ class SearchIndexTests(unittest.TestCase):
             with self.assertRaises(search_index.IndexUnavailableError):
                 list(search_index.search_sentence_index("people", 1, self.dataset_dir))
 
+    def test_dataset_with_truncated_runtime_index_is_not_valid(self):
+        conn = sqlite3.connect(self.dataset_dir / "sentence_index.sqlite")
+        try:
+            conn.execute("DELETE FROM sentence_lookup WHERE sentence_id = 1")
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.assertFalse(search_index.is_dataset_valid(self.dataset_dir))
+
     def test_search_uses_dataset_without_fts_runtime_dependency(self):
         result = list(
             search_index.search_sentence_index(

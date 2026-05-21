@@ -112,6 +112,32 @@ class GuiCoreConfigStoreTests(unittest.TestCase):
 
 
 class GuiBackendTests(unittest.TestCase):
+    def test_indexes_are_ready_requires_sentence_dataset_and_red_book_index(self):
+        wrapped_backend = backend.GuiBackend(
+            is_sentence_index_valid_func=mock.Mock(return_value=True),
+            is_red_book_index_valid_func=mock.Mock(return_value=False),
+        )
+
+        self.assertFalse(wrapped_backend.indexes_are_ready())
+
+    def test_build_indexes_validates_sentence_dataset_before_red_book_build(self):
+        events = []
+        wrapped_backend = backend.GuiBackend(
+            ensure_sentence_index_func=lambda progress_callback=None: events.append("sentence") or {"validated": True},
+            ensure_red_book_index_func=lambda progress_callback=None: events.append("red-book") or {"rebuilt": False},
+        )
+
+        result = wrapped_backend.build_indexes(progress_callback=lambda _progress: None)
+
+        self.assertEqual(["sentence", "red-book"], events)
+        self.assertEqual(
+            {
+                "sentence_dataset": {"validated": True},
+                "red_book_index": {"rebuilt": False},
+            },
+            result,
+        )
+
     def test_search_delegates_to_wrapped_function(self):
         search_result = {"query": "kata", "sentences": []}
         search_func = mock.Mock(return_value=search_result)

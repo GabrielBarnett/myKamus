@@ -36,13 +36,15 @@ class GuiBackend:
         )
 
     def build_indexes(self, progress_callback):
+        sentence_dataset = self._ensure_sentence_index(
+            progress_callback=progress_callback
+        )
+        red_book_index = self._ensure_red_book_index(
+            progress_callback=progress_callback
+        )
         return {
-            "sentence_index": self._ensure_sentence_index(
-                progress_callback=progress_callback
-            ),
-            "red_book_index": self._ensure_red_book_index(
-                progress_callback=progress_callback
-            ),
+            "sentence_dataset": sentence_dataset,
+            "red_book_index": red_book_index,
         }
 
     def search(self, query, sentence_limit):

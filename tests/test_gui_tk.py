@@ -286,7 +286,7 @@ class _BlockingIndexBackend(_BackendStub):
             self.progress_count += 1
             progress_callback(
                 {
-                    "title": "Building sentence search index...",
+                    "title": "Building Red Book index...",
                     "percent": min(100.0, float(step + 1)),
                     "processed_pages": step + 1,
                     "total_pages": 80,
@@ -627,7 +627,7 @@ class TkMainWindowTests(unittest.TestCase):
             indexes_ready=False,
             build_indexes_callback=lambda progress_callback: progress_callback(
                 {
-                    "title": "Building sentence search index...",
+                    "title": "Building Red Book index...",
                     "percent": 100.0,
                     "processed_pages": 1,
                     "total_pages": 1,

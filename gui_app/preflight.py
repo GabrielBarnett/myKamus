@@ -4,6 +4,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+from sentence_data.layout import DEFAULT_SENTENCE_DATA_DIR
+from search_index import IndexUnavailableError, ensure_sentence_dataset
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 REQUIREMENTS_PATH = BASE_DIR / "requirements.txt"
@@ -11,7 +14,6 @@ VENDOR_PATH = BASE_DIR / ".mykamus_vendor"
 SETUP_LOG_PATH = BASE_DIR / "myKamus_setup.log"
 REQUIRED_DATA_FILES = [
     "en-id_dict.txt",
-    "en-id_sentences.txt",
     "indonesiandictionary.pdf",
 ]
 REQUIREMENT_IMPORTS = {
@@ -88,6 +90,15 @@ def missing_data_files(base_dir=BASE_DIR):
         if not path.is_file() or is_git_lfs_pointer(path):
             missing.append(file_name)
     return missing
+
+
+def sentence_dataset_errors(base_dir=BASE_DIR):
+    dataset_dir = Path(base_dir) / DEFAULT_SENTENCE_DATA_DIR
+    try:
+        ensure_sentence_dataset(dataset_dir)
+    except IndexUnavailableError as error:
+        return [str(error) or "Sentence dataset is unavailable."]
+    return []
 
 
 def command_exists(command_name):
@@ -214,38 +225,49 @@ def ensure_dependencies(input_func=input, output_func=print, log_path=SETUP_LOG_
 
 def ensure_data_files(input_func=input, output_func=print):
     missing = missing_data_files()
-    if not missing:
+    sentence_errors = sentence_dataset_errors()
+    if not missing and not sentence_errors:
         return True
 
-    output_func("myKamus needs these local data files before it can start:")
-    for file_name in missing:
-        output_func("- " + file_name)
-    output_func("")
-    output_func(
-        "The large data files may not have downloaded. This project uses Git LFS for large files."
-    )
-
-    if not command_exists("git"):
-        output_func("Git and Git LFS are needed to fetch the bundled data files.")
-        return False
-
-    if not prompt_yes_no(
-        "Try downloading the data files with git lfs pull?",
-        input_func=input_func,
-        output_func=output_func,
-    ):
-        output_func("Cannot start until these data files are present.")
-        return False
-
-    if not run_command(["git", "lfs", "pull"]):
-        output_func("git lfs pull failed.")
-        return False
-
-    still_missing = missing_data_files()
-    if still_missing:
-        output_func("These data files are still missing:")
-        for file_name in still_missing:
+    if missing:
+        output_func("myKamus needs these local data files before it can start:")
+        for file_name in missing:
             output_func("- " + file_name)
+        output_func("")
+        output_func(
+            "The large data files may not have downloaded. This project uses Git LFS for large files."
+        )
+
+        if not command_exists("git"):
+            output_func("Git and Git LFS are needed to fetch the bundled data files.")
+            return False
+
+        if not prompt_yes_no(
+            "Try downloading the data files with git lfs pull?",
+            input_func=input_func,
+            output_func=output_func,
+        ):
+            output_func("Cannot start until these data files are present.")
+            return False
+
+        if not run_command(["git", "lfs", "pull"]):
+            output_func("git lfs pull failed.")
+            return False
+
+        still_missing = missing_data_files()
+        if still_missing:
+            output_func("These data files are still missing:")
+            for file_name in still_missing:
+                output_func("- " + file_name)
+            return False
+
+        sentence_errors = sentence_dataset_errors()
+
+    if sentence_errors:
+        output_func("myKamus needs the checked-in sharded sentence dataset before it can start:")
+        for message in sentence_errors:
+            output_func("- " + message)
+        output_func("Restore the data/sentences folder from the repository.")
         return False
 
     return True

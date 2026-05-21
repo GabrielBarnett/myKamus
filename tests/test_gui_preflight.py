@@ -129,6 +129,16 @@ class PreflightDetectionTests(unittest.TestCase):
         self.assertEqual([module_name], first_missing)
         self.assertEqual([], second_missing)
 
+    def test_missing_data_files_no_longer_requires_en_id_sentences_txt(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_dir = Path(temp_dir)
+            (base_dir / "en-id_dict.txt").write_text("dict", encoding="utf-8")
+            (base_dir / "indonesiandictionary.pdf").write_text("pdf", encoding="utf-8")
+
+            missing = preflight.missing_data_files(base_dir)
+
+        self.assertEqual([], missing)
+
     def test_missing_data_files_reports_required_files_only(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             base_dir = Path(temp_dir)
@@ -136,10 +146,15 @@ class PreflightDetectionTests(unittest.TestCase):
 
             missing = preflight.missing_data_files(base_dir)
 
-        self.assertEqual(
-            ["en-id_sentences.txt", "indonesiandictionary.pdf"],
-            missing,
-        )
+        self.assertEqual(["indonesiandictionary.pdf"], missing)
+
+    def test_sentence_dataset_errors_reports_missing_manifest(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_dir = Path(temp_dir)
+
+            errors = preflight.sentence_dataset_errors(base_dir)
+
+        self.assertTrue(any("manifest.json" in message for message in errors))
 
     def test_missing_data_files_reports_git_lfs_pointer_files(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -317,7 +332,8 @@ class PreflightDetectionTests(unittest.TestCase):
         self.assertIn("--force-reinstall", log_text)
 
     def test_ensure_data_files_returns_true_when_files_exist(self):
-        with mock.patch.object(preflight, "missing_data_files", return_value=[]):
+        with mock.patch.object(preflight, "missing_data_files", return_value=[]), \
+                mock.patch.object(preflight, "sentence_dataset_errors", return_value=[]):
             result = preflight.ensure_data_files(
                 input_func=lambda _question: "n",
                 output_func=lambda _message: None,
@@ -328,7 +344,8 @@ class PreflightDetectionTests(unittest.TestCase):
     def test_ensure_data_files_fails_when_git_is_unavailable(self):
         messages = []
 
-        with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_sentences.txt"]), \
+        with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_dict.txt"]), \
+                mock.patch.object(preflight, "sentence_dataset_errors", return_value=[]), \
                 mock.patch.object(preflight, "command_exists", return_value=False), \
                 mock.patch.object(preflight, "run_command") as run_command:
             result = preflight.ensure_data_files(
@@ -343,13 +360,14 @@ class PreflightDetectionTests(unittest.TestCase):
     def test_ensure_data_files_runs_git_lfs_pull_when_user_approves(self):
         messages = []
         commands = []
-        missing_results = [["en-id_sentences.txt"], []]
+        missing_results = [["en-id_dict.txt"], []]
 
         with mock.patch.object(
             preflight,
             "missing_data_files",
             side_effect=lambda: missing_results.pop(0),
         ), \
+                mock.patch.object(preflight, "sentence_dataset_errors", return_value=[]), \
                 mock.patch.object(preflight, "command_exists", return_value=True), \
                 mock.patch.object(
                     preflight,
@@ -368,7 +386,8 @@ class PreflightDetectionTests(unittest.TestCase):
     def test_ensure_data_files_fails_when_files_remain_missing_after_git_lfs(self):
         messages = []
 
-        with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_sentences.txt"]), \
+        with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_dict.txt"]), \
+                mock.patch.object(preflight, "sentence_dataset_errors", return_value=[]), \
                 mock.patch.object(preflight, "command_exists", return_value=True), \
                 mock.patch.object(preflight, "run_command", return_value=True):
             result = preflight.ensure_data_files(
@@ -382,7 +401,8 @@ class PreflightDetectionTests(unittest.TestCase):
     def test_ensure_data_files_fails_when_user_declines_git_lfs(self):
         messages = []
 
-        with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_sentences.txt"]), \
+        with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_dict.txt"]), \
+                mock.patch.object(preflight, "sentence_dataset_errors", return_value=[]), \
                 mock.patch.object(preflight, "command_exists", return_value=True), \
                 mock.patch.object(preflight, "run_command") as run_command:
             result = preflight.ensure_data_files(
@@ -393,6 +413,24 @@ class PreflightDetectionTests(unittest.TestCase):
         self.assertFalse(result)
         run_command.assert_not_called()
         self.assertTrue(any("Cannot start until these data files are present" in message for message in messages))
+
+    def test_ensure_data_files_reports_sentence_dataset_errors_without_git_lfs_pull(self):
+        messages = []
+
+        with mock.patch.object(preflight, "missing_data_files", return_value=[]), \
+                mock.patch.object(preflight, "sentence_dataset_errors", return_value=["Sentence dataset is missing manifest.json."]), \
+                mock.patch.object(preflight, "command_exists") as command_exists, \
+                mock.patch.object(preflight, "run_command") as run_command:
+            result = preflight.ensure_data_files(
+                input_func=lambda _question: "y",
+                output_func=messages.append,
+            )
+
+        self.assertFalse(result)
+        command_exists.assert_not_called()
+        run_command.assert_not_called()
+        self.assertTrue(any("data/sentences" in message for message in messages))
+        self.assertTrue(any("manifest.json" in message for message in messages))
 
     def test_main_returns_zero_when_dependencies_and_data_are_ready(self):
         input_func = mock.Mock(return_value="n")

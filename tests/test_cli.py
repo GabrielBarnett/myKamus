@@ -114,6 +114,18 @@ class CliTests(unittest.TestCase):
         self.assertEqual("", result.stderr)
         self.assertIn("Example sentences are unavailable right now.", result.stdout)
 
+    def test_cli_handles_corrupt_sentence_dataset_without_traceback(self):
+        (self.dataset_dir / "sentence_index.sqlite").write_text(
+            "not a sqlite database",
+            encoding="utf-8",
+        )
+
+        result = self.run_cli("people")
+
+        self.assertEqual(0, result.returncode)
+        self.assertEqual("", result.stderr)
+        self.assertIn("Example sentences are unavailable right now.", result.stdout)
+
     def test_cli_prints_red_book_results_when_index_is_available(self):
         conn = red_book_index._connect(self.red_book_cache_path)
         try:

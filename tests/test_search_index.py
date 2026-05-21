@@ -105,6 +105,15 @@ class SearchIndexTests(unittest.TestCase):
             with self.assertRaises(search_index.IndexUnavailableError):
                 list(search_index.search_sentence_index("people", 1, self.dataset_dir))
 
+    def test_corrupt_index_database_raises_index_unavailable(self):
+        (self.dataset_dir / "sentence_index.sqlite").write_text(
+            "not a sqlite database",
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(search_index.IndexUnavailableError):
+            list(search_index.search_sentence_index("people", 1, self.dataset_dir))
+
     def test_search_uses_dataset_without_fts_runtime_dependency(self):
         result = list(
             search_index.search_sentence_index(

@@ -20,6 +20,10 @@ def _connect(path):
     return sqlite3.connect(str(path))
 
 
+def _translate_sqlite_error(error):
+    raise IndexUnavailableError("Sentence dataset is unavailable.") from error
+
+
 def is_dataset_valid(dataset_dir):
     try:
         validate_dataset(dataset_dir)
@@ -90,20 +94,23 @@ def search_sentence_index(query, limit, dataset_dir):
 
     index_conn = _connect(paths.index)
     try:
-        ids = _candidate_ids(index_conn, query)
-        if not ids:
-            return
+        try:
+            ids = _candidate_ids(index_conn, query)
+            if not ids:
+                return
 
-        placeholders = ",".join("?" for _ in ids)
-        rows = index_conn.execute(
-            f"""
-            SELECT sentence_id, shard_file
-            FROM sentence_lookup
-            WHERE sentence_id IN ({placeholders})
-            ORDER BY sentence_id
-            """,
-            ids,
-        ).fetchall()
+            placeholders = ",".join("?" for _ in ids)
+            rows = index_conn.execute(
+                f"""
+                SELECT sentence_id, shard_file
+                FROM sentence_lookup
+                WHERE sentence_id IN ({placeholders})
+                ORDER BY sentence_id
+                """,
+                ids,
+            ).fetchall()
+        except sqlite3.Error as error:
+            _translate_sqlite_error(error)
     finally:
         index_conn.close()
 
@@ -114,44 +121,47 @@ def search_sentence_index(query, limit, dataset_dir):
     for shard_file, sentence_ids in grouped.items():
         shard_conn = _connect(paths.shards_dir / shard_file)
         try:
-            placeholders = ",".join("?" for _ in sentence_ids)
-            for sentence_id, english, indonesian in shard_conn.execute(
-                f"""
-                SELECT id, english, indonesian
-                FROM sentence_pairs
-                WHERE id IN ({placeholders})
-                ORDER BY id
-                """,
-                sentence_ids,
-            ):
-                english_matches = bool(pattern.search(english))
-                indonesian_matches = bool(pattern.search(indonesian))
-                if not english_matches and not indonesian_matches:
-                    continue
+            try:
+                placeholders = ",".join("?" for _ in sentence_ids)
+                for sentence_id, english, indonesian in shard_conn.execute(
+                    f"""
+                    SELECT id, english, indonesian
+                    FROM sentence_pairs
+                    WHERE id IN ({placeholders})
+                    ORDER BY id
+                    """,
+                    sentence_ids,
+                ):
+                    english_matches = bool(pattern.search(english))
+                    indonesian_matches = bool(pattern.search(indonesian))
+                    if not english_matches and not indonesian_matches:
+                        continue
 
-                pair_key = (english, indonesian)
-                if pair_key in emitted:
-                    continue
-                if limit is not None and emitted_count >= limit:
-                    return
+                    pair_key = (english, indonesian)
+                    if pair_key in emitted:
+                        continue
+                    if limit is not None and emitted_count >= limit:
+                        return
 
-                emitted.add(pair_key)
-                emitted_count += 1
-                if indonesian_matches:
-                    yield {
-                        "match": indonesian,
-                        "translation": english,
-                        "matched_language": "indonesian",
-                        "english": english,
-                        "indonesian": indonesian,
-                    }
-                else:
-                    yield {
-                        "match": english,
-                        "translation": indonesian,
-                        "matched_language": "english",
-                        "english": english,
-                        "indonesian": indonesian,
-                    }
+                    emitted.add(pair_key)
+                    emitted_count += 1
+                    if indonesian_matches:
+                        yield {
+                            "match": indonesian,
+                            "translation": english,
+                            "matched_language": "indonesian",
+                            "english": english,
+                            "indonesian": indonesian,
+                        }
+                    else:
+                        yield {
+                            "match": english,
+                            "translation": indonesian,
+                            "matched_language": "english",
+                            "english": english,
+                            "indonesian": indonesian,
+                        }
+            except sqlite3.Error as error:
+                _translate_sqlite_error(error)
         finally:
             shard_conn.close()

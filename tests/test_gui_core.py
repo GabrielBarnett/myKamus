@@ -132,7 +132,7 @@ class GuiBackendTests(unittest.TestCase):
         self.assertEqual(["sentence", "red-book"], events)
         self.assertEqual(
             {
-                "sentence_dataset": {"validated": True},
+                "sentence_index": {"validated": True},
                 "red_book_index": {"rebuilt": False},
             },
             result,

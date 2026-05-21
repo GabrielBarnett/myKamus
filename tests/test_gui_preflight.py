@@ -432,6 +432,27 @@ class PreflightDetectionTests(unittest.TestCase):
         self.assertTrue(any("data/sentences" in message for message in messages))
         self.assertTrue(any("manifest.json" in message for message in messages))
 
+    def test_ensure_data_files_reports_mixed_missing_files_and_dataset_without_git_lfs_pull(self):
+        messages = []
+        input_func = mock.Mock(return_value="y")
+
+        with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_dict.txt"]), \
+                mock.patch.object(preflight, "sentence_dataset_errors", return_value=["Sentence dataset is missing manifest.json."]), \
+                mock.patch.object(preflight, "command_exists") as command_exists, \
+                mock.patch.object(preflight, "run_command") as run_command:
+            result = preflight.ensure_data_files(
+                input_func=input_func,
+                output_func=messages.append,
+            )
+
+        self.assertFalse(result)
+        input_func.assert_not_called()
+        command_exists.assert_not_called()
+        run_command.assert_not_called()
+        self.assertTrue(any("en-id_dict.txt" in message for message in messages))
+        self.assertTrue(any("data/sentences" in message for message in messages))
+        self.assertTrue(any("manifest.json" in message for message in messages))
+
     def test_main_returns_zero_when_dependencies_and_data_are_ready(self):
         input_func = mock.Mock(return_value="n")
         output_func = mock.Mock()

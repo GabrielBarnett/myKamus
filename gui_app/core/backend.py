@@ -43,7 +43,7 @@ class GuiBackend:
             progress_callback=progress_callback
         )
         return {
-            "sentence_dataset": sentence_dataset,
+            "sentence_index": sentence_dataset,
             "red_book_index": red_book_index,
         }
 

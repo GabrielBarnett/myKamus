@@ -234,6 +234,15 @@ def ensure_data_files(input_func=input, output_func=print):
         for file_name in missing:
             output_func("- " + file_name)
         output_func("")
+
+    if sentence_errors:
+        output_func("myKamus needs the checked-in sharded sentence dataset before it can start:")
+        for message in sentence_errors:
+            output_func("- " + message)
+        output_func("Restore the data/sentences folder from the repository.")
+        return False
+
+    if missing:
         output_func(
             "The large data files may not have downloaded. This project uses Git LFS for large files."
         )

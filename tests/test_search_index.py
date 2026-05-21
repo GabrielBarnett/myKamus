@@ -116,6 +116,12 @@ class SearchIndexTests(unittest.TestCase):
         with self.assertRaises(search_index.IndexUnavailableError):
             list(search_index.search_sentence_index("people", 1, self.dataset_dir))
 
+    def test_binary_manifest_raises_index_unavailable(self):
+        (self.dataset_dir / "manifest.json").write_bytes(b"\xff\xfe\x00\x01")
+
+        with self.assertRaises(search_index.IndexUnavailableError):
+            search_index.ensure_sentence_dataset(self.dataset_dir)
+
     def test_index_connection_open_failure_raises_index_unavailable(self):
         with mock.patch(
             "search_index._connect",

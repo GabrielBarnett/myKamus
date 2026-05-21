@@ -158,6 +158,8 @@ def _validate_runtime_dataset(dataset_dir):
         return validated
     except SentenceDataValidationError as error:
         raise IndexUnavailableError(str(error)) from error
+    except (UnicodeDecodeError, KeyError, TypeError, ValueError) as error:
+        raise IndexUnavailableError("Sentence dataset is unavailable.") from error
 
 
 def is_dataset_valid(dataset_dir):

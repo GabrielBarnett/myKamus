@@ -180,6 +180,20 @@ class SearchFunctionTests(unittest.TestCase):
             result["sentence_message"],
         )
 
+    def test_malformed_manifest_structure_returns_unavailable_message(self):
+        manifest_path = self.dataset_dir / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        del manifest["shards"][0]["first_sentence_id"]
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        result = sf.search_for_word_data("people", sentence_limit=None)
+
+        self.assertEqual([], result["sentences"])
+        self.assertEqual(
+            "Example sentences are unavailable right now.",
+            result["sentence_message"],
+        )
+
     def test_load_all_sentences_handles_missing_sentence_dataset(self):
         with mock.patch("builtins.print") as print_mock:
             for path in self.dataset_dir.rglob("*"):

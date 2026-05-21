@@ -78,6 +78,15 @@ def load_config():
     return config
 
 
+def _load_config_overrides():
+    overrides = {}
+    for config_path in _config_paths():
+        if config_path.exists():
+            with config_path.open(encoding="utf-8") as config_file:
+                overrides = _deep_update(overrides, json.load(config_file))
+    return overrides
+
+
 def data_path(config_key):
     path = Path(load_config()[config_key])
     if path.is_absolute():
@@ -86,6 +95,12 @@ def data_path(config_key):
 
 
 def sentence_data_dir():
+    overrides = _load_config_overrides()
+    if "sentence_data_dir" not in overrides and "sentences_path" in overrides:
+        legacy_path = Path(overrides["sentences_path"])
+        if not legacy_path.is_absolute():
+            legacy_path = BASE_DIR / legacy_path
+        return legacy_path.parent / "data" / "sentences"
     return data_path("sentence_data_dir")
 
 

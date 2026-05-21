@@ -194,6 +194,52 @@ class SearchFunctionTests(unittest.TestCase):
             result["sentence_message"],
         )
 
+    def test_legacy_sentences_config_derives_sentence_data_dir(self):
+        legacy_temp_dir = tempfile.TemporaryDirectory()
+        legacy_temp_path = Path(legacy_temp_dir.name)
+        try:
+            dictionary_path = legacy_temp_path / "dict.txt"
+            legacy_sentences_path = legacy_temp_path / "sentences.txt"
+            legacy_dataset_dir = legacy_temp_path / "data" / "sentences"
+            config_path = legacy_temp_path / "legacy_config.json"
+
+            dictionary_path.write_text("\t.\tPEOPLE\tRAKYAT\t.\t.\n", encoding="utf-8")
+            legacy_sentences_path.write_text(
+                "People.\n"
+                "Rakyat?\n",
+                encoding="utf-8",
+            )
+            build_sentence_dataset(legacy_sentences_path, legacy_dataset_dir)
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "dictionary_path": str(dictionary_path),
+                        "sentences_path": str(legacy_sentences_path),
+                        "cache_path": str(legacy_temp_path / "search.sqlite"),
+                        "red_book_enabled": False,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            old_config = os.environ.get(sf.CONFIG_ENV_VAR)
+            os.environ[sf.CONFIG_ENV_VAR] = str(config_path)
+            self.reset_search_state()
+            try:
+                self.assertEqual(legacy_dataset_dir, sf.sentence_data_dir())
+                result = sf.search_for_word_data("people", sentence_limit=None)
+            finally:
+                if old_config is None:
+                    os.environ.pop(sf.CONFIG_ENV_VAR, None)
+                else:
+                    os.environ[sf.CONFIG_ENV_VAR] = old_config
+                self.reset_search_state()
+
+            self.assertEqual("People.", result["sentences"][0]["match"])
+            self.assertEqual("Rakyat?", result["sentences"][0]["translation"])
+        finally:
+            legacy_temp_dir.cleanup()
+
     def test_load_all_sentences_handles_missing_sentence_dataset(self):
         with mock.patch("builtins.print") as print_mock:
             for path in self.dataset_dir.rglob("*"):

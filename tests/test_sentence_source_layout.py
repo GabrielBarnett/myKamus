@@ -96,14 +96,23 @@ class SentenceSourceLayoutTests(unittest.TestCase):
         with self.assertRaisesRegex(layout.SentenceSourceValidationError, "checksum"):
             layout.validate_source_dataset(self.root, verify_checksums=True)
 
+    def test_rejects_mismatched_total_pair_count(self):
+        chunk = self.write_chunk("en-id_sentences_0001.txt", "People.\nRakyat?\n")
+        self.write_manifest([self.chunk_entry(chunk)])
+        manifest = json.loads((self.root / "manifest.json").read_text(encoding="utf-8"))
+        manifest["total_pair_count"] = 2
+        (self.root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+        with self.assertRaisesRegex(layout.SentenceSourceValidationError, "total_pair_count"):
+            layout.validate_source_dataset(self.root)
+
     def test_manifest_signature_changes_when_manifest_changes(self):
         chunk = self.write_chunk("en-id_sentences_0001.txt", "People.\nRakyat?\n")
         self.write_manifest([self.chunk_entry(chunk)])
         first = layout.manifest_signature(layout.validate_source_dataset(self.root)["manifest"])
 
-        manifest = json.loads((self.root / "manifest.json").read_text(encoding="utf-8"))
-        manifest["total_pair_count"] = 2
-        (self.root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        second_chunk = self.write_chunk("en-id_sentences_0002.txt", "Language.\nBahasa.\n")
+        self.write_manifest([self.chunk_entry(chunk), self.chunk_entry(second_chunk)])
         second = layout.manifest_signature(layout.validate_source_dataset(self.root)["manifest"])
 
         self.assertNotEqual(first, second)

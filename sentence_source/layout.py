@@ -169,7 +169,14 @@ def validate_source_dataset(source_dir, verify_checksums=False):
     for chunk in chunks:
         total_pair_count += _validate_chunk_entry(chunk, paths.chunks_dir, verify_checksums)
 
-    _require_int(manifest.get("total_pair_count"), "total_pair_count")
+    declared_total_pair_count = _require_int(
+        manifest.get("total_pair_count"),
+        "total_pair_count",
+    )
+    if declared_total_pair_count != total_pair_count:
+        raise SentenceSourceValidationError(
+            "Sentence source manifest total_pair_count does not match chunks."
+        )
 
     return {
         "paths": paths,

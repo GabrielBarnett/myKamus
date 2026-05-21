@@ -24,12 +24,38 @@ def _translate_sqlite_error(error):
     raise IndexUnavailableError("Sentence dataset is unavailable.") from error
 
 
+def _connect_or_raise(path):
+    try:
+        return _connect(path)
+    except sqlite3.Error as error:
+        _translate_sqlite_error(error)
+
+
+def _probe_query(path, query):
+    conn = _connect_or_raise(path)
+    try:
+        try:
+            conn.execute(query).fetchone()
+        except sqlite3.Error as error:
+            _translate_sqlite_error(error)
+    finally:
+        conn.close()
+
+
 def is_dataset_valid(dataset_dir):
     try:
-        validate_dataset(dataset_dir)
-        return True
+        validated = validate_dataset(dataset_dir)
     except SentenceDataValidationError:
         return False
+    try:
+        paths = validated["paths"]
+        _probe_query(paths.index, "SELECT 1 FROM sentence_lookup LIMIT 1")
+        _probe_query(paths.index, "SELECT 1 FROM sentence_terms LIMIT 1")
+        for shard in validated["manifest"]["shards"]:
+            _probe_query(paths.shards_dir / shard["file"], "SELECT 1 FROM sentence_pairs LIMIT 1")
+    except IndexUnavailableError:
+        return False
+    return True
 
 
 def ensure_sentence_dataset(dataset_dir, progress_callback=None):
@@ -92,7 +118,7 @@ def search_sentence_index(query, limit, dataset_dir):
     emitted = set()
     emitted_count = 0
 
-    index_conn = _connect(paths.index)
+    index_conn = _connect_or_raise(paths.index)
     try:
         try:
             ids = _candidate_ids(index_conn, query)
@@ -119,7 +145,7 @@ def search_sentence_index(query, limit, dataset_dir):
         grouped[shard_file].append(sentence_id)
 
     for shard_file, sentence_ids in grouped.items():
-        shard_conn = _connect(paths.shards_dir / shard_file)
+        shard_conn = _connect_or_raise(paths.shards_dir / shard_file)
         try:
             try:
                 placeholders = ",".join("?" for _ in sentence_ids)

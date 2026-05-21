@@ -141,6 +141,22 @@ class SearchFunctionTests(unittest.TestCase):
             result["sentence_message"],
         )
 
+    def test_corrupt_sentence_dataset_returns_user_facing_result_message(self):
+        (self.dataset_dir / "sentence_index.sqlite").write_text(
+            "not a sqlite database",
+            encoding="utf-8",
+        )
+
+        self.assertFalse(sf.is_sentence_index_valid())
+
+        result = sf.search_for_word_data("people")
+
+        self.assertEqual([], result["sentences"])
+        self.assertEqual(
+            "Example sentences are unavailable right now.",
+            result["sentence_message"],
+        )
+
     def test_load_all_sentences_handles_missing_sentence_dataset(self):
         with mock.patch("builtins.print") as print_mock:
             for path in self.dataset_dir.rglob("*"):

@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 import tempfile
 import unittest
@@ -113,6 +114,14 @@ class SearchIndexTests(unittest.TestCase):
 
         with self.assertRaises(search_index.IndexUnavailableError):
             list(search_index.search_sentence_index("people", 1, self.dataset_dir))
+
+    def test_index_connection_open_failure_raises_index_unavailable(self):
+        with mock.patch(
+            "search_index._connect",
+            side_effect=sqlite3.DatabaseError("cannot open database"),
+        ):
+            with self.assertRaises(search_index.IndexUnavailableError):
+                list(search_index.search_sentence_index("people", 1, self.dataset_dir))
 
     def test_search_uses_dataset_without_fts_runtime_dependency(self):
         result = list(

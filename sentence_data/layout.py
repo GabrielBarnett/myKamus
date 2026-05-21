@@ -90,7 +90,9 @@ def validate_dataset(dataset_dir):
     if not paths.shards_dir.is_dir():
         raise SentenceDataValidationError("Sentence dataset shards directory is missing.")
 
-    shards = manifest.get("shards") or []
+    shards = manifest.get("shards")
+    if not isinstance(shards, list):
+        raise SentenceDataValidationError("Sentence dataset manifest shards must be a list.")
     if not shards:
         raise SentenceDataValidationError("Sentence dataset manifest does not list any shards.")
 

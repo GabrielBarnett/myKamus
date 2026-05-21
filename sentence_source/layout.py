@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
+import re
 
 
 SCHEMA_VERSION = "1"
@@ -9,6 +10,7 @@ SOURCE_FORMAT = "alternating-en-id-lines"
 MAX_CHUNK_BYTES = 80 * 1024 * 1024
 TARGET_CHUNK_BYTES = 72 * 1024 * 1024
 DEFAULT_SENTENCE_SOURCE_DIR = Path("data") / "sentence_source"
+SHA256_HEX_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
 class SentenceSourceError(RuntimeError):
@@ -122,9 +124,9 @@ def _validate_chunk_entry(chunk, chunks_dir, verify_checksums):
         raise SentenceSourceValidationError("Sentence source chunk exceeds the 80 MB size limit.")
 
     sha256 = chunk.get("sha256")
-    if not isinstance(sha256, str) or len(sha256) != 64:
+    if not isinstance(sha256, str) or not SHA256_HEX_PATTERN.fullmatch(sha256):
         raise SentenceSourceValidationError(
-            f"Sentence source manifest sha256 must be 64 characters for {chunk_file}."
+            f"Sentence source manifest sha256 must be a lowercase hex digest for {chunk_file}."
         )
     if verify_checksums and file_sha256(chunk_path) != sha256:
         raise SentenceSourceValidationError(

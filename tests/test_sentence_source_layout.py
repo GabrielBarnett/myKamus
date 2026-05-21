@@ -79,6 +79,21 @@ class SentenceSourceLayoutTests(unittest.TestCase):
         with self.assertRaisesRegex(layout.SentenceSourceValidationError, "missing"):
             layout.validate_source_dataset(self.root)
 
+    def test_rejects_path_traversal_chunk_name(self):
+        self.write_manifest(
+            [
+                {
+                    "file": "../bad.txt",
+                    "size_bytes": 0,
+                    "sha256": "0" * 64,
+                    "pair_count": 0,
+                }
+            ]
+        )
+
+        with self.assertRaisesRegex(layout.SentenceSourceValidationError, "basename"):
+            layout.validate_source_dataset(self.root)
+
     def test_rejects_oversized_chunk_from_manifest_or_disk(self):
         chunk = self.write_chunk("en-id_sentences_0001.txt", "People.\nRakyat?\n")
         entry = self.chunk_entry(chunk)
@@ -88,10 +103,19 @@ class SentenceSourceLayoutTests(unittest.TestCase):
         with self.assertRaisesRegex(layout.SentenceSourceValidationError, "80 MB"):
             layout.validate_source_dataset(self.root)
 
+    def test_rejects_malformed_checksum_metadata(self):
+        chunk = self.write_chunk("en-id_sentences_0001.txt", "People.\nRakyat?\n")
+        entry = self.chunk_entry(chunk)
+        entry["sha256"] = "z" * 64
+        self.write_manifest([entry])
+
+        with self.assertRaisesRegex(layout.SentenceSourceValidationError, "sha256"):
+            layout.validate_source_dataset(self.root)
+
     def test_verify_checksums_rejects_changed_chunk(self):
         chunk = self.write_chunk("en-id_sentences_0001.txt", "People.\nRakyat?\n")
         self.write_manifest([self.chunk_entry(chunk)])
-        chunk.write_text("Changed.\nBerubah.\n", encoding="utf-8")
+        chunk.write_text("Persons\nBangsa??\n", encoding="utf-8")
 
         with self.assertRaisesRegex(layout.SentenceSourceValidationError, "checksum"):
             layout.validate_source_dataset(self.root, verify_checksums=True)

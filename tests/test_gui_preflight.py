@@ -400,105 +400,13 @@ class PreflightDetectionTests(unittest.TestCase):
 
         self.assertTrue(result)
 
-    def test_ensure_data_files_fails_when_git_is_unavailable(self):
-        messages = []
-
-        with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_dict.txt"]), \
-                mock.patch.object(preflight, "sentence_source_errors", return_value=[]), \
-                mock.patch.object(preflight, "command_exists", return_value=False), \
-                mock.patch.object(preflight, "run_command") as run_command:
-            result = preflight.ensure_data_files(
-                input_func=lambda _question: "n",
-                output_func=messages.append,
-            )
-
-        self.assertFalse(result)
-        run_command.assert_not_called()
-        self.assertTrue(any("Git and Git LFS are needed" in message for message in messages))
-
-    def test_ensure_data_files_runs_git_lfs_pull_when_user_approves(self):
-        messages = []
-        commands = []
-        missing_results = [["en-id_dict.txt"], []]
-
-        with mock.patch.object(
-            preflight,
-            "missing_data_files",
-            side_effect=lambda: missing_results.pop(0),
-        ), \
-                mock.patch.object(preflight, "sentence_source_errors", return_value=[]), \
-                mock.patch.object(preflight, "command_exists", return_value=True), \
-                mock.patch.object(
-                    preflight,
-                    "run_command",
-                    side_effect=lambda command: commands.append(command) or True,
-                ):
-            result = preflight.ensure_data_files(
-                input_func=lambda _question: "y",
-                output_func=messages.append,
-            )
-
-        self.assertTrue(result)
-        self.assertEqual([["git", "lfs", "pull"]], commands)
-        self.assertTrue(any("large data files" in message for message in messages))
-
-    def test_ensure_data_files_fails_when_files_remain_missing_after_git_lfs(self):
-        messages = []
-
-        with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_dict.txt"]), \
-                mock.patch.object(preflight, "sentence_source_errors", return_value=[]), \
-                mock.patch.object(preflight, "command_exists", return_value=True), \
-                mock.patch.object(preflight, "run_command", return_value=True):
-            result = preflight.ensure_data_files(
-                input_func=lambda _question: "y",
-                output_func=messages.append,
-            )
-
-        self.assertFalse(result)
-        self.assertTrue(any("still missing" in message for message in messages))
-
-    def test_ensure_data_files_fails_when_user_declines_git_lfs(self):
-        messages = []
-
-        with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_dict.txt"]), \
-                mock.patch.object(preflight, "sentence_source_errors", return_value=[]), \
-                mock.patch.object(preflight, "command_exists", return_value=True), \
-                mock.patch.object(preflight, "run_command") as run_command:
-            result = preflight.ensure_data_files(
-                input_func=lambda _question: "n",
-                output_func=messages.append,
-            )
-
-        self.assertFalse(result)
-        run_command.assert_not_called()
-        self.assertTrue(any("Cannot start until these data files are present" in message for message in messages))
-
-    def test_ensure_data_files_reports_sentence_source_errors_without_git_lfs_pull(self):
-        messages = []
-
-        with mock.patch.object(preflight, "missing_data_files", return_value=[]), \
-                mock.patch.object(preflight, "sentence_source_errors", return_value=["Sentence source is missing manifest.json."]), \
-                mock.patch.object(preflight, "command_exists") as command_exists, \
-                mock.patch.object(preflight, "run_command") as run_command:
-            result = preflight.ensure_data_files(
-                input_func=lambda _question: "y",
-                output_func=messages.append,
-            )
-
-        self.assertFalse(result)
-        command_exists.assert_not_called()
-        run_command.assert_not_called()
-        self.assertTrue(any("data/sentence_source" in message for message in messages))
-        self.assertTrue(any("manifest.json" in message for message in messages))
-
-    def test_ensure_data_files_reports_mixed_missing_files_and_source_without_git_lfs_pull(self):
+    def test_ensure_data_files_reports_missing_files_without_git_lfs_flow(self):
         messages = []
         input_func = mock.Mock(return_value="y")
 
         with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_dict.txt"]), \
-                mock.patch.object(preflight, "sentence_source_errors", return_value=["Sentence source is missing manifest.json."]), \
-                mock.patch.object(preflight, "command_exists") as command_exists, \
-                mock.patch.object(preflight, "run_command") as run_command:
+                mock.patch.object(preflight, "sentence_source_errors", return_value=[]), \
+                mock.patch("gui_app.preflight.subprocess.run") as subprocess_run:
             result = preflight.ensure_data_files(
                 input_func=input_func,
                 output_func=messages.append,
@@ -506,8 +414,64 @@ class PreflightDetectionTests(unittest.TestCase):
 
         self.assertFalse(result)
         input_func.assert_not_called()
-        command_exists.assert_not_called()
-        run_command.assert_not_called()
+        subprocess_run.assert_not_called()
+        self.assertTrue(any("en-id_dict.txt" in message for message in messages))
+        self.assertTrue(any("Restore the missing data files" in message for message in messages))
+        self.assertFalse(any("Git " + "LFS" in message for message in messages))
+        self.assertFalse(any("git " + "lfs" in message.casefold() for message in messages))
+
+    def test_ensure_data_files_reports_missing_files_and_source_without_git_lfs_flow(self):
+        messages = []
+        input_func = mock.Mock(return_value="y")
+
+        with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_dict.txt"]), \
+                mock.patch.object(preflight, "sentence_source_errors", return_value=["Sentence source is missing manifest.json."]), \
+                mock.patch("gui_app.preflight.subprocess.run") as subprocess_run:
+            result = preflight.ensure_data_files(
+                input_func=input_func,
+                output_func=messages.append,
+            )
+
+        self.assertFalse(result)
+        input_func.assert_not_called()
+        subprocess_run.assert_not_called()
+        self.assertTrue(any("en-id_dict.txt" in message for message in messages))
+        self.assertTrue(any("data/sentence_source" in message for message in messages))
+        self.assertTrue(any("manifest.json" in message for message in messages))
+        self.assertFalse(any("Git " + "LFS" in message for message in messages))
+        self.assertFalse(any("git " + "lfs" in message.casefold() for message in messages))
+
+    def test_ensure_data_files_reports_sentence_source_errors_without_data_download(self):
+        messages = []
+
+        with mock.patch.object(preflight, "missing_data_files", return_value=[]), \
+                mock.patch.object(preflight, "sentence_source_errors", return_value=["Sentence source is missing manifest.json."]), \
+                mock.patch("gui_app.preflight.subprocess.run") as subprocess_run:
+            result = preflight.ensure_data_files(
+                input_func=lambda _question: "y",
+                output_func=messages.append,
+            )
+
+        self.assertFalse(result)
+        subprocess_run.assert_not_called()
+        self.assertTrue(any("data/sentence_source" in message for message in messages))
+        self.assertTrue(any("manifest.json" in message for message in messages))
+
+    def test_ensure_data_files_reports_mixed_missing_files_and_source_without_prompt(self):
+        messages = []
+        input_func = mock.Mock(return_value="y")
+
+        with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_dict.txt"]), \
+                mock.patch.object(preflight, "sentence_source_errors", return_value=["Sentence source is missing manifest.json."]), \
+                mock.patch("gui_app.preflight.subprocess.run") as subprocess_run:
+            result = preflight.ensure_data_files(
+                input_func=input_func,
+                output_func=messages.append,
+            )
+
+        self.assertFalse(result)
+        input_func.assert_not_called()
+        subprocess_run.assert_not_called()
         self.assertTrue(any("en-id_dict.txt" in message for message in messages))
         self.assertTrue(any("data/sentence_source" in message for message in messages))
         self.assertTrue(any("manifest.json" in message for message in messages))

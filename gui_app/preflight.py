@@ -119,14 +119,6 @@ def sentence_source_errors(base_dir=BASE_DIR):
     return []
 
 
-def command_exists(command_name):
-    return shutil.which(command_name) is not None
-
-
-def run_command(command):
-    return subprocess.run(command, cwd=BASE_DIR).returncode == 0
-
-
 def run_pip_command(command):
     return subprocess.run(
         command,
@@ -258,46 +250,13 @@ def ensure_data_files(input_func=input, output_func=print):
         for message in sentence_errors:
             output_func("- " + message)
         output_func("Restore the data/sentence_source folder from the repository.")
-        return False
 
     if missing:
         output_func(
-            "The large data files may not have downloaded. This project uses Git LFS for large files."
+            "Restore the missing data files from a fresh copy of the repository or your approved internal source."
         )
 
-        if not command_exists("git"):
-            output_func("Git and Git LFS are needed to fetch the bundled data files.")
-            return False
-
-        if not prompt_yes_no(
-            "Try downloading the data files with git lfs pull?",
-            input_func=input_func,
-            output_func=output_func,
-        ):
-            output_func("Cannot start until these data files are present.")
-            return False
-
-        if not run_command(["git", "lfs", "pull"]):
-            output_func("git lfs pull failed.")
-            return False
-
-        still_missing = missing_data_files()
-        if still_missing:
-            output_func("These data files are still missing:")
-            for file_name in still_missing:
-                output_func("- " + file_name)
-            return False
-
-        sentence_errors = sentence_source_errors()
-
-    if sentence_errors:
-        output_func("myKamus needs the included sentence source chunks before it can start:")
-        for message in sentence_errors:
-            output_func("- " + message)
-        output_func("Restore the data/sentence_source folder from the repository.")
-        return False
-
-    return True
+    return False
 
 
 def main(input_func=input, output_func=print):

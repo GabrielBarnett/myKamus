@@ -148,11 +148,9 @@ class PreflightDetectionTests(unittest.TestCase):
 
         self.assertEqual(["indonesiandictionary.pdf"], missing)
 
-    def test_sentence_dataset_errors_reports_missing_manifest(self):
+    def test_sentence_source_errors_reports_missing_manifest(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            base_dir = Path(temp_dir)
-
-            errors = preflight.sentence_dataset_errors(base_dir)
+            errors = preflight.sentence_source_errors(Path(temp_dir))
 
         self.assertTrue(any("manifest.json" in message for message in errors))
 
@@ -333,7 +331,7 @@ class PreflightDetectionTests(unittest.TestCase):
 
     def test_ensure_data_files_returns_true_when_files_exist(self):
         with mock.patch.object(preflight, "missing_data_files", return_value=[]), \
-                mock.patch.object(preflight, "sentence_dataset_errors", return_value=[]):
+                mock.patch.object(preflight, "sentence_source_errors", return_value=[]):
             result = preflight.ensure_data_files(
                 input_func=lambda _question: "n",
                 output_func=lambda _message: None,
@@ -345,7 +343,7 @@ class PreflightDetectionTests(unittest.TestCase):
         messages = []
 
         with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_dict.txt"]), \
-                mock.patch.object(preflight, "sentence_dataset_errors", return_value=[]), \
+                mock.patch.object(preflight, "sentence_source_errors", return_value=[]), \
                 mock.patch.object(preflight, "command_exists", return_value=False), \
                 mock.patch.object(preflight, "run_command") as run_command:
             result = preflight.ensure_data_files(
@@ -367,7 +365,7 @@ class PreflightDetectionTests(unittest.TestCase):
             "missing_data_files",
             side_effect=lambda: missing_results.pop(0),
         ), \
-                mock.patch.object(preflight, "sentence_dataset_errors", return_value=[]), \
+                mock.patch.object(preflight, "sentence_source_errors", return_value=[]), \
                 mock.patch.object(preflight, "command_exists", return_value=True), \
                 mock.patch.object(
                     preflight,
@@ -387,7 +385,7 @@ class PreflightDetectionTests(unittest.TestCase):
         messages = []
 
         with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_dict.txt"]), \
-                mock.patch.object(preflight, "sentence_dataset_errors", return_value=[]), \
+                mock.patch.object(preflight, "sentence_source_errors", return_value=[]), \
                 mock.patch.object(preflight, "command_exists", return_value=True), \
                 mock.patch.object(preflight, "run_command", return_value=True):
             result = preflight.ensure_data_files(
@@ -402,7 +400,7 @@ class PreflightDetectionTests(unittest.TestCase):
         messages = []
 
         with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_dict.txt"]), \
-                mock.patch.object(preflight, "sentence_dataset_errors", return_value=[]), \
+                mock.patch.object(preflight, "sentence_source_errors", return_value=[]), \
                 mock.patch.object(preflight, "command_exists", return_value=True), \
                 mock.patch.object(preflight, "run_command") as run_command:
             result = preflight.ensure_data_files(
@@ -414,11 +412,11 @@ class PreflightDetectionTests(unittest.TestCase):
         run_command.assert_not_called()
         self.assertTrue(any("Cannot start until these data files are present" in message for message in messages))
 
-    def test_ensure_data_files_reports_sentence_dataset_errors_without_git_lfs_pull(self):
+    def test_ensure_data_files_reports_sentence_source_errors_without_git_lfs_pull(self):
         messages = []
 
         with mock.patch.object(preflight, "missing_data_files", return_value=[]), \
-                mock.patch.object(preflight, "sentence_dataset_errors", return_value=["Sentence dataset is missing manifest.json."]), \
+                mock.patch.object(preflight, "sentence_source_errors", return_value=["Sentence source is missing manifest.json."]), \
                 mock.patch.object(preflight, "command_exists") as command_exists, \
                 mock.patch.object(preflight, "run_command") as run_command:
             result = preflight.ensure_data_files(
@@ -429,15 +427,15 @@ class PreflightDetectionTests(unittest.TestCase):
         self.assertFalse(result)
         command_exists.assert_not_called()
         run_command.assert_not_called()
-        self.assertTrue(any("data/sentences" in message for message in messages))
+        self.assertTrue(any("data/sentence_source" in message for message in messages))
         self.assertTrue(any("manifest.json" in message for message in messages))
 
-    def test_ensure_data_files_reports_mixed_missing_files_and_dataset_without_git_lfs_pull(self):
+    def test_ensure_data_files_reports_mixed_missing_files_and_source_without_git_lfs_pull(self):
         messages = []
         input_func = mock.Mock(return_value="y")
 
         with mock.patch.object(preflight, "missing_data_files", return_value=["en-id_dict.txt"]), \
-                mock.patch.object(preflight, "sentence_dataset_errors", return_value=["Sentence dataset is missing manifest.json."]), \
+                mock.patch.object(preflight, "sentence_source_errors", return_value=["Sentence source is missing manifest.json."]), \
                 mock.patch.object(preflight, "command_exists") as command_exists, \
                 mock.patch.object(preflight, "run_command") as run_command:
             result = preflight.ensure_data_files(
@@ -450,7 +448,7 @@ class PreflightDetectionTests(unittest.TestCase):
         command_exists.assert_not_called()
         run_command.assert_not_called()
         self.assertTrue(any("en-id_dict.txt" in message for message in messages))
-        self.assertTrue(any("data/sentences" in message for message in messages))
+        self.assertTrue(any("data/sentence_source" in message for message in messages))
         self.assertTrue(any("manifest.json" in message for message in messages))
 
     def test_main_returns_zero_when_dependencies_and_data_are_ready(self):

@@ -4,8 +4,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from sentence_data.layout import DEFAULT_SENTENCE_DATA_DIR
-from search_index import IndexUnavailableError, ensure_sentence_dataset
+from sentence_source.layout import (
+    DEFAULT_SENTENCE_SOURCE_DIR,
+    SentenceSourceValidationError,
+    validate_source_dataset,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -92,12 +95,12 @@ def missing_data_files(base_dir=BASE_DIR):
     return missing
 
 
-def sentence_dataset_errors(base_dir=BASE_DIR):
-    dataset_dir = Path(base_dir) / DEFAULT_SENTENCE_DATA_DIR
+def sentence_source_errors(base_dir=BASE_DIR):
+    source_dir = Path(base_dir) / DEFAULT_SENTENCE_SOURCE_DIR
     try:
-        ensure_sentence_dataset(dataset_dir)
-    except IndexUnavailableError as error:
-        return [str(error) or "Sentence dataset is unavailable."]
+        validate_source_dataset(source_dir, verify_checksums=False)
+    except SentenceSourceValidationError as error:
+        return [str(error)]
     return []
 
 
@@ -225,7 +228,7 @@ def ensure_dependencies(input_func=input, output_func=print, log_path=SETUP_LOG_
 
 def ensure_data_files(input_func=input, output_func=print):
     missing = missing_data_files()
-    sentence_errors = sentence_dataset_errors()
+    sentence_errors = sentence_source_errors()
     if not missing and not sentence_errors:
         return True
 
@@ -236,10 +239,10 @@ def ensure_data_files(input_func=input, output_func=print):
         output_func("")
 
     if sentence_errors:
-        output_func("myKamus needs the checked-in sharded sentence dataset before it can start:")
+        output_func("myKamus needs the included sentence source chunks before it can start:")
         for message in sentence_errors:
             output_func("- " + message)
-        output_func("Restore the data/sentences folder from the repository.")
+        output_func("Restore the data/sentence_source folder from the repository.")
         return False
 
     if missing:
@@ -270,13 +273,13 @@ def ensure_data_files(input_func=input, output_func=print):
                 output_func("- " + file_name)
             return False
 
-        sentence_errors = sentence_dataset_errors()
+        sentence_errors = sentence_source_errors()
 
     if sentence_errors:
-        output_func("myKamus needs the checked-in sharded sentence dataset before it can start:")
+        output_func("myKamus needs the included sentence source chunks before it can start:")
         for message in sentence_errors:
             output_func("- " + message)
-        output_func("Restore the data/sentences folder from the repository.")
+        output_func("Restore the data/sentence_source folder from the repository.")
         return False
 
     return True

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from sentence_data.builder import build_sentence_dataset
+from sentence_source.splitter import split_sentence_source
 import search_functions as sf
 
 
@@ -16,7 +16,8 @@ class SearchFunctionTests(unittest.TestCase):
         self.temp_path = Path(self.temp_dir.name)
         dictionary_path = self.temp_path / "dict.txt"
         self.sentences_path = self.temp_path / "sentences.txt"
-        self.dataset_dir = self.temp_path / "sentence_data"
+        self.source_dir = self.temp_path / "sentence_source"
+        self.cache_path = self.temp_path / ".mykamus_cache" / "search.sqlite"
         config_path = self.temp_path / "config.json"
 
         dictionary_path.write_text(
@@ -38,12 +39,13 @@ class SearchFunctionTests(unittest.TestCase):
             "Banyak orang tahu.\n",
             encoding="utf-8",
         )
-        build_sentence_dataset(self.sentences_path, self.dataset_dir)
+        split_sentence_source(self.sentences_path, self.source_dir)
         config_path.write_text(
             json.dumps(
                 {
                     "dictionary_path": str(dictionary_path),
-                    "sentence_data_dir": str(self.dataset_dir),
+                    "sentence_source_dir": str(self.source_dir),
+                    "cache_path": str(self.cache_path),
                     "red_book_enabled": False,
                     "sentence_limit": 4,
                 }
@@ -126,13 +128,20 @@ class SearchFunctionTests(unittest.TestCase):
         self.assertEqual("english", result["sentences"][0]["matched_language"])
         self.assertTrue(result["sentences_truncated"])
 
-    def test_missing_sentence_dataset_returns_user_facing_result_message(self):
-        for path in self.dataset_dir.rglob("*"):
+    def test_sentence_search_builds_cache_from_chunks_without_raw_source_file(self):
+        self.sentences_path.unlink()
+
+        result = sf.search_for_word_data("people", sentence_limit=1)
+
+        self.assertTrue(self.cache_path.exists())
+        self.assertEqual("People.", result["sentences"][0]["match"])
+
+    def test_missing_sentence_source_returns_user_facing_result_message(self):
+        for path in self.source_dir.rglob("*"):
             if path.is_file():
                 path.unlink()
-        for path in sorted((p for p in self.dataset_dir.rglob("*") if p.is_dir()), reverse=True):
+        for path in sorted((p for p in self.source_dir.rglob("*") if p.is_dir()), reverse=True):
             path.rmdir()
-        self.dataset_dir.rmdir()
 
         result = sf.search_for_word_data("people")
 
@@ -142,8 +151,9 @@ class SearchFunctionTests(unittest.TestCase):
             result["sentence_message"],
         )
 
-    def test_corrupt_sentence_dataset_returns_user_facing_result_message(self):
-        (self.dataset_dir / "sentence_index.sqlite").write_text(
+    def test_corrupt_sentence_cache_rebuilds_from_source_chunks(self):
+        sf.ensure_sentence_index()
+        self.cache_path.write_text(
             "not a sqlite database",
             encoding="utf-8",
         )
@@ -152,20 +162,19 @@ class SearchFunctionTests(unittest.TestCase):
 
         result = sf.search_for_word_data("people")
 
-        self.assertEqual([], result["sentences"])
-        self.assertEqual(
-            "Example sentences are unavailable right now.",
-            result["sentence_message"],
-        )
+        self.assertEqual("People.", result["sentences"][0]["match"])
+        self.assertIsNone(result["sentence_message"])
+        self.assertTrue(sf.is_sentence_index_valid())
 
-    def test_logically_broken_sentence_dataset_returns_unavailable_message(self):
-        conn = sqlite3.connect(self.dataset_dir / "sentence_index.sqlite")
+    def test_stale_sentence_cache_rebuilds_from_source_chunks(self):
+        sf.ensure_sentence_index()
+        conn = sqlite3.connect(self.cache_path)
         try:
             conn.execute(
                 """
-                UPDATE sentence_terms
-                SET term = 'persons'
-                WHERE sentence_id = 1 AND term = 'people'
+                UPDATE metadata
+                SET value = '999'
+                WHERE key = 'source_pair_count'
                 """
             )
             conn.commit()
@@ -174,16 +183,14 @@ class SearchFunctionTests(unittest.TestCase):
 
         result = sf.search_for_word_data("people", sentence_limit=None)
 
-        self.assertEqual([], result["sentences"])
-        self.assertEqual(
-            "Example sentences are unavailable right now.",
-            result["sentence_message"],
-        )
+        self.assertEqual("People.", result["sentences"][0]["match"])
+        self.assertIsNone(result["sentence_message"])
+        self.assertTrue(sf.is_sentence_index_valid())
 
-    def test_malformed_manifest_structure_returns_unavailable_message(self):
-        manifest_path = self.dataset_dir / "manifest.json"
+    def test_malformed_source_manifest_structure_returns_unavailable_message(self):
+        manifest_path = self.source_dir / "manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        del manifest["shards"][0]["first_sentence_id"]
+        del manifest["chunks"][0]["file"]
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
         result = sf.search_for_word_data("people", sentence_limit=None)
@@ -194,13 +201,13 @@ class SearchFunctionTests(unittest.TestCase):
             result["sentence_message"],
         )
 
-    def test_legacy_sentences_config_derives_sentence_data_dir(self):
+    def test_legacy_sentences_config_derives_sentence_source_dir(self):
         legacy_temp_dir = tempfile.TemporaryDirectory()
         legacy_temp_path = Path(legacy_temp_dir.name)
         try:
             dictionary_path = legacy_temp_path / "dict.txt"
             legacy_sentences_path = legacy_temp_path / "sentences.txt"
-            legacy_dataset_dir = legacy_temp_path / "data" / "sentences"
+            legacy_source_dir = legacy_temp_path / "data" / "sentence_source"
             config_path = legacy_temp_path / "legacy_config.json"
 
             dictionary_path.write_text("\t.\tPEOPLE\tRAKYAT\t.\t.\n", encoding="utf-8")
@@ -209,7 +216,7 @@ class SearchFunctionTests(unittest.TestCase):
                 "Rakyat?\n",
                 encoding="utf-8",
             )
-            build_sentence_dataset(legacy_sentences_path, legacy_dataset_dir)
+            split_sentence_source(legacy_sentences_path, legacy_source_dir)
             config_path.write_text(
                 json.dumps(
                     {
@@ -226,7 +233,7 @@ class SearchFunctionTests(unittest.TestCase):
             os.environ[sf.CONFIG_ENV_VAR] = str(config_path)
             self.reset_search_state()
             try:
-                self.assertEqual(legacy_dataset_dir, sf.sentence_data_dir())
+                self.assertEqual(legacy_source_dir, sf.sentence_source_dir())
                 result = sf.search_for_word_data("people", sentence_limit=None)
             finally:
                 if old_config is None:
@@ -268,14 +275,13 @@ class SearchFunctionTests(unittest.TestCase):
         self.assertIn("Example sentences are unavailable right now.", rendered)
         self.assertNotIn("Match: People.", rendered)
 
-    def test_load_all_sentences_handles_missing_sentence_dataset(self):
+    def test_load_all_sentences_handles_missing_sentence_source(self):
         with mock.patch("builtins.print") as print_mock:
-            for path in self.dataset_dir.rglob("*"):
+            for path in self.source_dir.rglob("*"):
                 if path.is_file():
                     path.unlink()
-            for path in sorted((p for p in self.dataset_dir.rglob("*") if p.is_dir()), reverse=True):
+            for path in sorted((p for p in self.source_dir.rglob("*") if p.is_dir()), reverse=True):
                 path.rmdir()
-            self.dataset_dir.rmdir()
 
             sf.load_all_sentences("people")
 

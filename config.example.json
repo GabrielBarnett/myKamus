@@ -1,6 +1,6 @@
 {
   "dictionary_path": "en-id_dict.txt",
-  "sentences_path": "en-id_sentences.txt",
+  "sentence_source_dir": "data/sentence_source",
   "cache_path": ".mykamus_cache/search.sqlite",
   "red_book_pdf_path": "indonesiandictionary.pdf",
   "red_book_cache_path": ".mykamus_cache/red_book.sqlite",
@@ -14,9 +14,6 @@
     "window_position": "+100+100",
     "load_all_sentence_limit": 200,
     "search_status_delay_ms": 200
-  },
-  "search": {
-    "use_index": true
   },
   "hotkeys": {
     "manual_search": "ctrl+s",

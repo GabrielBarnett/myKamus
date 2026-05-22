@@ -112,7 +112,7 @@ class GuiCoreConfigStoreTests(unittest.TestCase):
 
 
 class GuiBackendTests(unittest.TestCase):
-    def test_indexes_are_ready_requires_sentence_dataset_and_red_book_index(self):
+    def test_indexes_are_ready_requires_sentence_cache_and_red_book_index(self):
         wrapped_backend = backend.GuiBackend(
             is_sentence_index_valid_func=mock.Mock(return_value=True),
             is_red_book_index_valid_func=mock.Mock(return_value=False),
@@ -120,10 +120,13 @@ class GuiBackendTests(unittest.TestCase):
 
         self.assertFalse(wrapped_backend.indexes_are_ready())
 
-    def test_build_indexes_validates_sentence_dataset_before_red_book_build(self):
+    def test_build_indexes_builds_sentence_cache_before_red_book_index(self):
         events = []
         wrapped_backend = backend.GuiBackend(
-            ensure_sentence_index_func=lambda progress_callback=None: events.append("sentence") or {"validated": True},
+            ensure_sentence_index_func=lambda progress_callback=None: events.append("sentence") or {
+                "cache_path": "cache.sqlite",
+                "rebuilt": True,
+            },
             ensure_red_book_index_func=lambda progress_callback=None: events.append("red-book") or {"rebuilt": False},
         )
 
@@ -132,7 +135,7 @@ class GuiBackendTests(unittest.TestCase):
         self.assertEqual(["sentence", "red-book"], events)
         self.assertEqual(
             {
-                "sentence_index": {"validated": True},
+                "sentence_index": {"cache_path": "cache.sqlite", "rebuilt": True},
                 "red_book_index": {"rebuilt": False},
             },
             result,

@@ -18,7 +18,8 @@ BASE_DIR = Path(__file__).resolve().parent
 CONFIG_ENV_VAR = "MYKAMUS_CONFIG"
 CONFIG_DEFAULTS = {
     "dictionary_path": "en-id_dict.txt",
-    "sentence_data_dir": "data/sentences",
+    "sentence_source_dir": "data/sentence_source",
+    "cache_path": ".mykamus_cache/search.sqlite",
     "red_book_pdf_path": "indonesiandictionary.pdf",
     "red_book_cache_path": ".mykamus_cache/red_book.sqlite",
     "red_book_results_limit": 3,
@@ -94,14 +95,18 @@ def data_path(config_key):
     return BASE_DIR / path
 
 
-def sentence_data_dir():
+def sentence_source_dir():
     overrides = _load_config_overrides()
-    if "sentence_data_dir" not in overrides and "sentences_path" in overrides:
+    if "sentence_source_dir" not in overrides and "sentences_path" in overrides:
         legacy_path = Path(overrides["sentences_path"])
         if not legacy_path.is_absolute():
             legacy_path = BASE_DIR / legacy_path
-        return legacy_path.parent / "data" / "sentences"
-    return data_path("sentence_data_dir")
+        return legacy_path.parent / "data" / "sentence_source"
+    return data_path("sentence_source_dir")
+
+
+def cache_path():
+    return data_path("cache_path")
 
 
 def red_book_pdf_path():
@@ -121,7 +126,7 @@ def should_index_red_book():
 
 
 def is_sentence_index_valid():
-    return search_index.is_dataset_valid(sentence_data_dir())
+    return search_index.is_index_valid(sentence_source_dir(), cache_path())
 
 
 def is_red_book_index_valid():
@@ -134,8 +139,9 @@ def is_red_book_index_valid():
 
 
 def ensure_sentence_index(progress_callback=None):
-    return search_index.ensure_sentence_dataset(
-        sentence_data_dir(),
+    return search_index.ensure_sentence_index(
+        sentence_source_dir(),
+        cache_path(),
         progress_callback=progress_callback,
     )
 
@@ -179,7 +185,8 @@ def load_data():
     Backward-compatible loader.
 
     The dictionary is small enough to keep indexed in memory. Example sentence
-    lookups now come from the on-disk sentence dataset at search time.
+    lookups now come from the local cache built from source chunks at search
+    time.
     """
     return load_dictionary(), None
 
@@ -240,10 +247,13 @@ def format_red_book_definition_block(index, result):
 
 
 def iter_matching_indexed_sentence_pairs(query, limit):
+    if not is_sentence_index_valid():
+        ensure_sentence_index()
     yield from search_index.search_sentence_index(
         query,
         limit,
-        sentence_data_dir(),
+        sentence_source_dir(),
+        cache_path(),
     )
 
 
@@ -281,7 +291,7 @@ def _coerce_sentence_limit(value):
         return CONFIG_DEFAULTS["sentence_limit"]
 
 
-def _sentence_data_unavailable_message():
+def _sentence_source_unavailable_message():
     return "Example sentences are unavailable right now."
 
 
@@ -351,7 +361,7 @@ def search_for_word_data(query, sentence_limit=_DEFAULT_SENTENCE_LIMIT):
     except search_index.IndexUnavailableError:
         result["sentences"] = []
         result["sentences_truncated"] = False
-        result["sentence_message"] = _sentence_data_unavailable_message()
+        result["sentence_message"] = _sentence_source_unavailable_message()
     return result
 
 
@@ -447,7 +457,7 @@ def load_all_sentences(string, sentence_limit=None):
             found_any = True
             index += 1
     except search_index.IndexUnavailableError:
-        print(_sentence_data_unavailable_message())
+        print(_sentence_source_unavailable_message())
         return
 
     for sentence_block in sentence_blocks:

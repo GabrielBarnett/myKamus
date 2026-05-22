@@ -25,10 +25,8 @@ SOURCE_FAILURES = (
     OSError,
     SentenceSourceValidationError,
     UnicodeDecodeError,
-    KeyError,
-    TypeError,
-    ValueError,
 )
+_VALIDATION_CACHE = {}
 
 
 def _connect(cache_path):
@@ -104,15 +102,22 @@ def _emit_progress(progress_callback, processed_bytes, total_bytes, force=False)
     if progress_callback is None:
         return
     percent = 100.0 if total_bytes <= 0 else min(100.0, processed_bytes * 100.0 / total_bytes)
-    progress_callback(
-        {
-            "title": "Building sentence cache...",
-            "processed_bytes": processed_bytes,
-            "total_bytes": total_bytes,
-            "percent": percent,
-            "complete": force or processed_bytes >= total_bytes,
-        }
-    )
+    try:
+        progress_callback(
+            {
+                "title": "Building sentence cache...",
+                "processed_bytes": processed_bytes,
+                "total_bytes": total_bytes,
+                "percent": percent,
+                "complete": force or processed_bytes >= total_bytes,
+            }
+        )
+    except Exception as error:
+        try:
+            error._mykamus_progress_callback = True
+        except Exception:
+            pass
+        raise
 
 
 def _insert_batch(conn, batch, fts_enabled):
@@ -142,7 +147,7 @@ def _iter_chunk_pairs(chunk_path, expected_sha256, progress):
         for raw_line in chunk_file:
             digest.update(raw_line)
             processed_bytes += len(raw_line)
-            line = _clean_line(raw_line.decode("utf-8", errors="replace"))
+            line = _clean_line(raw_line.decode("utf-8"))
             if not line:
                 yield None, processed_bytes
                 continue
@@ -184,6 +189,31 @@ def _raise_index_unavailable(error):
     raise IndexUnavailableError("Sentence index is missing or stale.") from error
 
 
+def _file_signature(path):
+    path = Path(path)
+    stat = path.stat()
+    return (str(path.resolve()), stat.st_size, stat.st_mtime_ns)
+
+
+def _metadata_signature(metadata):
+    return tuple(sorted(metadata.items()))
+
+
+def _validation_cache_key(validated, cache_path, expected_metadata):
+    return (
+        str(validated["paths"].root.resolve()),
+        str(Path(cache_path).resolve()),
+        _file_signature(validated["paths"].manifest),
+        _file_signature(cache_path),
+        _metadata_signature(expected_metadata),
+    )
+
+
+def _remember_valid_index(validated, cache_path):
+    expected = _expected_metadata(validated)
+    _VALIDATION_CACHE[_validation_cache_key(validated, cache_path, expected)] = True
+
+
 def build_sentence_index(source_dir, cache_path, progress_callback=None, validated=None):
     conn = None
     temp_path = None
@@ -194,6 +224,7 @@ def build_sentence_index(source_dir, cache_path, progress_callback=None, validat
         cache_path = Path(cache_path)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = cache_path.with_name(cache_path.name + ".tmp")
+        _VALIDATION_CACHE.clear()
         _remove_temp_cache(temp_path)
 
         chunks_dir = validated["paths"].chunks_dir
@@ -250,6 +281,7 @@ def build_sentence_index(source_dir, cache_path, progress_callback=None, validat
         except OSError as error:
             _remove_temp_cache(temp_path)
             _raise_index_unavailable(error)
+        _remember_valid_index(validated, cache_path)
         _emit_progress(progress_callback, total_bytes, total_bytes, force=True)
         return {
             "cache_path": str(cache_path),
@@ -257,6 +289,14 @@ def build_sentence_index(source_dir, cache_path, progress_callback=None, validat
             "fts_enabled": fts_enabled,
         }
     except SOURCE_FAILURES as error:
+        if getattr(error, "_mykamus_progress_callback", False):
+            raise
+        if conn is not None:
+            conn.close()
+        if temp_path is not None:
+            _remove_temp_cache(temp_path)
+        _raise_index_unavailable(error)
+    except sqlite3.Error as error:
         if conn is not None:
             conn.close()
         if temp_path is not None:
@@ -276,18 +316,24 @@ def is_index_valid(source_dir, cache_path):
         return False
     try:
         validated = validate_source_dataset(source_dir, verify_checksums=False)
+        expected = _expected_metadata(validated)
+        cache_key = _validation_cache_key(validated, cache_path, expected)
+        if _VALIDATION_CACHE.get(cache_key):
+            return True
         conn = _connect(cache_path)
         try:
             actual = _read_metadata(conn)
-            expected = _expected_metadata(validated)
             if not all(actual.get(key) == value for key, value in expected.items()):
                 return False
             if actual.get("fts_enabled") not in {"0", "1"}:
                 return False
-            return _validate_cache_shape(conn, actual)
+            valid = _validate_cache_shape(conn, actual)
+            if valid:
+                _VALIDATION_CACHE[cache_key] = True
+            return valid
         finally:
             conn.close()
-    except (OSError, sqlite3.Error, SentenceSourceValidationError, UnicodeDecodeError, KeyError, TypeError, ValueError):
+    except (OSError, sqlite3.Error, SentenceSourceValidationError, UnicodeDecodeError):
         return False
 
 
@@ -353,6 +399,8 @@ def _iter_candidate_pairs(conn, query):
 
 
 def search_sentence_index(query, limit, source_dir, cache_path):
+    if not query or not query.strip():
+        return
     if not is_index_valid(source_dir, cache_path):
         raise IndexUnavailableError("Sentence index is missing or stale.")
 

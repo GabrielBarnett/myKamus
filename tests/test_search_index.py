@@ -1,9 +1,11 @@
+import json
 import sqlite3
 from pathlib import Path
 import tempfile
 import unittest
 from unittest import mock
 
+from sentence_source.layout import file_sha256
 from sentence_source import splitter
 import search_index
 
@@ -120,6 +122,29 @@ class SearchIndexTests(unittest.TestCase):
         old_matches = list(search_index.search_sentence_index("people", 1, self.source_dir, self.cache_path))
         self.assertEqual("People.", old_matches[0]["match"])
 
+    def test_invalid_utf8_chunk_raises_index_unavailable_and_keeps_existing_cache(self):
+        search_index.ensure_sentence_index(self.source_dir, self.cache_path)
+        original_source = self.source_path.read_text(encoding="utf-8")
+        manifest_path = self.source_dir / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        chunk = manifest["chunks"][0]
+        chunk_path = self.source_dir / "chunks" / chunk["file"]
+        chunk_path.write_bytes(b"New people.\nRakyat \xffbaru.\n")
+        chunk["size_bytes"] = chunk_path.stat().st_size
+        chunk["sha256"] = file_sha256(chunk_path)
+        chunk["pair_count"] = 1
+        manifest["total_pair_count"] = 1
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+        with self.assertRaises(search_index.IndexUnavailableError):
+            search_index.ensure_sentence_index(self.source_dir, self.cache_path)
+
+        self.assertFalse(self.cache_path.with_name(self.cache_path.name + ".tmp").exists())
+        self.source_path.write_text(original_source, encoding="utf-8")
+        splitter.split_sentence_source(self.source_path, self.source_dir)
+        old_matches = list(search_index.search_sentence_index("people", 1, self.source_dir, self.cache_path))
+        self.assertEqual("People.", old_matches[0]["match"])
+
     def test_missing_source_chunks_raise_index_unavailable(self):
         for path in (self.source_dir / "chunks").glob("*.txt"):
             path.unlink()
@@ -133,6 +158,17 @@ class SearchIndexTests(unittest.TestCase):
 
         with self.assertRaises(search_index.IndexUnavailableError):
             search_index.ensure_sentence_index(self.source_dir, self.cache_path)
+
+    def test_progress_callback_value_error_propagates(self):
+        def fail_progress(_progress):
+            raise ValueError("progress failed")
+
+        with self.assertRaises(ValueError):
+            search_index.ensure_sentence_index(
+                self.source_dir,
+                self.cache_path,
+                progress_callback=fail_progress,
+            )
 
     def test_phrase_search_like_that_brat(self):
         search_index.ensure_sentence_index(self.source_dir, self.cache_path)
@@ -188,6 +224,27 @@ class SearchIndexTests(unittest.TestCase):
         result = list(search_index.search_sentence_index("people", 1, self.source_dir, self.cache_path))
 
         self.assertEqual(1, len(result))
+
+    def test_repeated_searches_reuse_validation_cache(self):
+        search_index.ensure_sentence_index(self.source_dir, self.cache_path)
+
+        with mock.patch(
+            "search_index._validate_cache_shape",
+            wraps=search_index._validate_cache_shape,
+        ) as validate_cache_shape:
+            list(search_index.search_sentence_index("people", 1, self.source_dir, self.cache_path))
+            list(search_index.search_sentence_index("people", 1, self.source_dir, self.cache_path))
+
+        self.assertLessEqual(validate_cache_shape.call_count, 1)
+
+    def test_empty_query_returns_no_results_without_scanning(self):
+        search_index.ensure_sentence_index(self.source_dir, self.cache_path)
+
+        with mock.patch("search_index._iter_candidate_pairs") as iter_candidate_pairs:
+            result = list(search_index.search_sentence_index("   ", 10, self.source_dir, self.cache_path))
+
+        self.assertEqual([], result)
+        iter_candidate_pairs.assert_not_called()
 
     def test_corrupt_cache_returns_false_from_is_index_valid(self):
         search_index.ensure_sentence_index(self.source_dir, self.cache_path)

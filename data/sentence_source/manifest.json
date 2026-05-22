@@ -1,0 +1,55 @@
+{
+  "schema_version": "1",
+  "source_format": "alternating-en-id-lines",
+  "chunks": [
+    {
+      "file": "en-id_sentences_0001.txt",
+      "size_bytes": 75497391,
+      "sha256": "5f094ed8cb921527422a39d35325df6016f7be499305c7b38f988130c964200a",
+      "pair_count": 1050439
+    },
+    {
+      "file": "en-id_sentences_0002.txt",
+      "size_bytes": 75497416,
+      "sha256": "a195621073e54bbdab04ce5950b720478c7fb3696dcb7ae621a4711250a1f2b1",
+      "pair_count": 1039966
+    },
+    {
+      "file": "en-id_sentences_0003.txt",
+      "size_bytes": 75497402,
+      "sha256": "24eb6755446a6f51ff4b769456f2b31aa9f2cd200fecd0caac43763b0eae1ed4",
+      "pair_count": 1019963
+    },
+    {
+      "file": "en-id_sentences_0004.txt",
+      "size_bytes": 75497442,
+      "sha256": "e64ebf1d3fba51c7659b101dae2a57b5622eb10b66ce2bcbf5e72c479bc3d7db",
+      "pair_count": 986505
+    },
+    {
+      "file": "en-id_sentences_0005.txt",
+      "size_bytes": 75497459,
+      "sha256": "392d734847e86f4406368ba577db9f54f0cab1ba92fd926e40def75178e30442",
+      "pair_count": 1012943
+    },
+    {
+      "file": "en-id_sentences_0006.txt",
+      "size_bytes": 75497371,
+      "sha256": "361051c356925c67eaea26ade16de5b3299d2c49b67a0af8afe059aee6b01d6a",
+      "pair_count": 983765
+    },
+    {
+      "file": "en-id_sentences_0007.txt",
+      "size_bytes": 75497445,
+      "sha256": "bd7919e49c62f7e90de63a72eb0b36ebd3cf68e29a58b53ecd18488f1b5625a4",
+      "pair_count": 968537
+    },
+    {
+      "file": "en-id_sentences_0008.txt",
+      "size_bytes": 24611003,
+      "sha256": "d7043ffe6a9c809eb97f64695ded4b112d108afbce0e9126fd20668a3b50816c",
+      "pair_count": 324362
+    }
+  ],
+  "total_pair_count": 7386480
+}

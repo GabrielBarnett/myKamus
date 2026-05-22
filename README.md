@@ -42,23 +42,12 @@ This is still a source-folder launcher, not a packaged `.exe`. A true Windows ap
 
 - Python 3.x
 - Tkinter support in the Python install
-- Git LFS for the bundled dictionary and sentence corpus
 - Python dependencies in `requirements.txt`
 
-Install Git LFS and Python dependencies:
+Install Python dependencies:
 
 ```bash
-git lfs install
-git lfs pull
 python -m pip install -r requirements.txt
-```
-
-If `git status`, clone, or checkout fails with `git-lfs: command not found`, install Git LFS first. On macOS with Homebrew:
-
-```bash
-brew install git-lfs
-git lfs install
-git lfs pull
 ```
 
 ## GUI usage
@@ -69,7 +58,7 @@ The main app is the Tkinter GUI:
 python -m gui_app.app
 ```
 
-On first launch, myKamus builds local SQLite indexes for the sentence corpus and Red Book definitions. The loading screen shows progress as a percentage. Later launches reuse the cache unless the source data changes.
+On first launch, myKamus builds local SQLite indexes for the sentence source chunks and Red Book definitions. The loading screen shows progress as a percentage. Later launches reuse the cache unless the source data changes.
 
 Search workflow:
 
@@ -110,6 +99,41 @@ Defaults are tracked in `config.example.json`. The GUI writes local window setti
 You can create or update `config.json` to customize keyboard shortcuts, sentence limits, cache paths, Red Book indexing, or data file paths.
 
 Generated search indexes live in `.mykamus_cache/` and are rebuilt automatically when the sentence corpus or Red Book PDF changes. They are local runtime data and should not be committed.
+
+## Runtime sentence data
+
+myKamus includes GitHub-friendly sentence source chunks under:
+
+~~~text
+data/
+  sentence_source/
+    manifest.json
+    chunks/
+      en-id_sentences_0001.txt
+      en-id_sentences_0002.txt
+~~~
+
+The first launch builds a local SQLite sentence cache at:
+
+~~~text
+.mykamus_cache/search.sqlite
+~~~
+
+That cache is generated on the user's computer and is not committed to Git. Later launches reuse it unless the sentence source manifest changes.
+
+`en-id_sentences.txt` is no longer required for normal use. It is a maintainer-only input used to regenerate the chunked source files.
+
+Maintainers can rebuild the chunked source files with:
+
+~~~bash
+python scripts/split_sentence_source.py --source en-id_sentences.txt --output data/sentence_source
+~~~
+
+Developers can verify the checked-in chunks with:
+
+~~~bash
+python scripts/split_sentence_source.py --verify --output data/sentence_source
+~~~
 
 ## Data Sources
 

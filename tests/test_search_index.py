@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 from pathlib import Path
 import tempfile
@@ -82,12 +83,15 @@ class SearchIndexTests(unittest.TestCase):
 
     def test_index_valid_rejects_same_size_corrupt_chunk(self):
         search_index.ensure_sentence_index(self.source_dir, self.cache_path)
+        self.assertTrue(search_index.is_index_valid(self.source_dir, self.cache_path))
         manifest = json.loads((self.source_dir / "manifest.json").read_text(encoding="utf-8"))
         chunk_path = self.source_dir / "chunks" / manifest["chunks"][0]["file"]
-        original_size = chunk_path.stat().st_size
+        original_stat = chunk_path.stat()
         replacement = chunk_path.read_bytes().replace(b"People.", b"Person.", 1)
         chunk_path.write_bytes(replacement)
-        self.assertEqual(original_size, chunk_path.stat().st_size)
+        os.utime(chunk_path, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+        self.assertEqual(original_stat.st_size, chunk_path.stat().st_size)
+        self.assertEqual(original_stat.st_mtime_ns, chunk_path.stat().st_mtime_ns)
 
         self.assertFalse(search_index.is_index_valid(self.source_dir, self.cache_path))
 

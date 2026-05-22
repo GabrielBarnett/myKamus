@@ -324,15 +324,12 @@ def is_index_valid(source_dir, cache_path):
     if not cache_path.is_file():
         return False
     try:
-        validated = validate_source_dataset(source_dir, verify_checksums=False)
+        validated = validate_source_dataset(source_dir, verify_checksums=True)
         expected = _expected_metadata(validated)
         cache_key = _validation_cache_key(validated, cache_path, expected)
         if _VALIDATION_CACHE.get(cache_key):
             return True
 
-        validated = validate_source_dataset(source_dir, verify_checksums=True)
-        expected = _expected_metadata(validated)
-        cache_key = _validation_cache_key(validated, cache_path, expected)
         conn = _connect(cache_path)
         try:
             actual = _read_metadata(conn)

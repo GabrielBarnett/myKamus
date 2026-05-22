@@ -1,3 +1,5 @@
+import json
+import os
 import tempfile
 import sys
 import unittest
@@ -5,6 +7,8 @@ from pathlib import Path
 from unittest import mock
 
 from gui_app import preflight
+from sentence_source.splitter import split_sentence_source
+import search_functions
 
 
 class PreflightDetectionTests(unittest.TestCase):
@@ -153,6 +157,63 @@ class PreflightDetectionTests(unittest.TestCase):
             errors = preflight.sentence_source_errors(Path(temp_dir))
 
         self.assertTrue(any("manifest.json" in message for message in errors))
+
+    def test_sentence_source_errors_uses_configured_absolute_source_dir(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            valid_source_dir = temp_path / "custom_sentence_source"
+            raw_source_path = temp_path / "sentences.txt"
+            config_path = temp_path / "config.json"
+            raw_source_path.write_text("People.\nRakyat?\n", encoding="utf-8")
+            split_sentence_source(raw_source_path, valid_source_dir)
+            config_path.write_text(
+                json.dumps({"sentence_source_dir": str(valid_source_dir)}),
+                encoding="utf-8",
+            )
+
+            old_config = os.environ.get(search_functions.CONFIG_ENV_VAR)
+            os.environ[search_functions.CONFIG_ENV_VAR] = str(config_path)
+            search_functions._CONFIG = None
+            try:
+                errors = preflight.sentence_source_errors(temp_path / "missing_default")
+            finally:
+                if old_config is None:
+                    os.environ.pop(search_functions.CONFIG_ENV_VAR, None)
+                else:
+                    os.environ[search_functions.CONFIG_ENV_VAR] = old_config
+                search_functions._CONFIG = None
+
+        self.assertEqual([], errors)
+
+    def test_sentence_source_errors_reports_configured_missing_source_dir(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            base_dir = temp_path / "base"
+            default_source_dir = base_dir / "data" / "sentence_source"
+            missing_source_dir = temp_path / "missing_sentence_source"
+            raw_source_path = temp_path / "sentences.txt"
+            config_path = temp_path / "config.json"
+            raw_source_path.write_text("People.\nRakyat?\n", encoding="utf-8")
+            split_sentence_source(raw_source_path, default_source_dir)
+            config_path.write_text(
+                json.dumps({"sentence_source_dir": str(missing_source_dir)}),
+                encoding="utf-8",
+            )
+
+            old_config = os.environ.get(search_functions.CONFIG_ENV_VAR)
+            os.environ[search_functions.CONFIG_ENV_VAR] = str(config_path)
+            search_functions._CONFIG = None
+            try:
+                errors = preflight.sentence_source_errors(base_dir)
+            finally:
+                if old_config is None:
+                    os.environ.pop(search_functions.CONFIG_ENV_VAR, None)
+                else:
+                    os.environ[search_functions.CONFIG_ENV_VAR] = old_config
+                search_functions._CONFIG = None
+
+        self.assertTrue(errors)
+        self.assertTrue(any(str(missing_source_dir) in message for message in errors))
 
     def test_missing_data_files_reports_git_lfs_pointer_files(self):
         with tempfile.TemporaryDirectory() as temp_dir:

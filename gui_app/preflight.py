@@ -1,9 +1,11 @@
 import importlib.util
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+import search_functions
 from sentence_source.layout import (
     DEFAULT_SENTENCE_SOURCE_DIR,
     SentenceSourceValidationError,
@@ -95,12 +97,25 @@ def missing_data_files(base_dir=BASE_DIR):
     return missing
 
 
+def _is_default_base_dir(base_dir):
+    try:
+        return Path(base_dir).resolve(strict=False) == BASE_DIR.resolve(strict=False)
+    except OSError:
+        return Path(base_dir) == BASE_DIR
+
+
+def _effective_sentence_source_dir(base_dir):
+    if os.environ.get(search_functions.CONFIG_ENV_VAR) or _is_default_base_dir(base_dir):
+        return search_functions.sentence_source_dir()
+    return Path(base_dir) / DEFAULT_SENTENCE_SOURCE_DIR
+
+
 def sentence_source_errors(base_dir=BASE_DIR):
-    source_dir = Path(base_dir) / DEFAULT_SENTENCE_SOURCE_DIR
+    source_dir = _effective_sentence_source_dir(base_dir)
     try:
         validate_source_dataset(source_dir, verify_checksums=False)
     except SentenceSourceValidationError as error:
-        return [str(error)]
+        return [f"Sentence source at {source_dir} is invalid: {error}"]
     return []
 
 

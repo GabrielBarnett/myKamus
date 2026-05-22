@@ -41,6 +41,27 @@ def iter_sentence_pairs(source_path):
         )
 
 
+def _count_chunk_pairs(chunk_path, chunk_file):
+    pending_english = None
+    pair_count = 0
+    with Path(chunk_path).open(encoding="utf-8", errors="replace") as chunk:
+        for raw_line in chunk:
+            cleaned = _clean_line(raw_line)
+            if not cleaned:
+                continue
+            if pending_english is None:
+                pending_english = cleaned
+                continue
+            pair_count += 1
+            pending_english = None
+
+    if pending_english is not None:
+        raise SentenceSourceValidationError(
+            f"Sentence source chunk {chunk_file} has an unmatched trailing line."
+        )
+    return pair_count
+
+
 def _validate_chunk_sizes(target_chunk_bytes, max_chunk_bytes):
     if target_chunk_bytes <= 0:
         raise SentenceSourceValidationError(
@@ -199,6 +220,15 @@ def split_sentence_source(
 
 def verify_sentence_source(source_dir):
     validated = validate_source_dataset(source_dir, verify_checksums=True)
+    chunks_dir = validated["paths"].chunks_dir
+    for chunk in validated["manifest"]["chunks"]:
+        chunk_file = chunk["file"]
+        actual_pair_count = _count_chunk_pairs(chunks_dir / chunk_file, chunk_file)
+        if actual_pair_count != chunk["pair_count"]:
+            raise SentenceSourceValidationError(
+                "Sentence source chunk "
+                f"{chunk_file} pair_count does not match parsed pairs."
+            )
     return {
         "total_pair_count": validated["total_pair_count"],
         "chunk_count": len(validated["manifest"]["chunks"]),

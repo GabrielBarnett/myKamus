@@ -1,5 +1,7 @@
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -49,6 +51,7 @@ class SentenceSourceSplitterTests(unittest.TestCase):
                 if line.strip()
             ]
             self.assertEqual(0, len(lines) % 2)
+            self.assertEqual(chunk["pair_count"], len(lines) // 2)
         self.assertEqual(3, result["total_pair_count"])
 
     def test_splitter_rejects_unmatched_trailing_line(self):
@@ -104,6 +107,81 @@ class SentenceSourceSplitterTests(unittest.TestCase):
 
         self.assertEqual(1, result["total_pair_count"])
         self.assertEqual(1, result["chunk_count"])
+
+    def test_verify_rejects_chunk_with_unmatched_trailing_line(self):
+        self.source_path.write_text("People.\nRakyat?\n", encoding="utf-8")
+        splitter.split_sentence_source(self.source_path, self.output_dir)
+        manifest_path = self.output_dir / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        chunk_path = self.output_dir / "chunks" / manifest["chunks"][0]["file"]
+        chunk_path.write_text("People.\n", encoding="utf-8")
+        manifest["chunks"][0]["size_bytes"] = chunk_path.stat().st_size
+        manifest["chunks"][0]["sha256"] = layout.file_sha256(chunk_path)
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(
+            layout.SentenceSourceValidationError,
+            r"en-id_sentences_0001\.txt.*unmatched trailing line",
+        ):
+            splitter.verify_sentence_source(self.output_dir)
+
+    def test_verify_rejects_chunk_pair_count_mismatch(self):
+        chunks_dir = self.output_dir / "chunks"
+        chunks_dir.mkdir(parents=True)
+        first_chunk = chunks_dir / "en-id_sentences_0001.txt"
+        second_chunk = chunks_dir / "en-id_sentences_0002.txt"
+        first_chunk.write_text("People.\nRakyat?\n", encoding="utf-8")
+        second_chunk.write_text(
+            "That brat.\nBocah itu.\nMany people know.\nBanyak orang tahu.\n",
+            encoding="utf-8",
+        )
+        manifest = {
+            "schema_version": layout.SCHEMA_VERSION,
+            "source_format": layout.SOURCE_FORMAT,
+            "chunks": [
+                {
+                    "file": first_chunk.name,
+                    "size_bytes": first_chunk.stat().st_size,
+                    "sha256": layout.file_sha256(first_chunk),
+                    "pair_count": 2,
+                },
+                {
+                    "file": second_chunk.name,
+                    "size_bytes": second_chunk.stat().st_size,
+                    "sha256": layout.file_sha256(second_chunk),
+                    "pair_count": 1,
+                },
+            ],
+            "total_pair_count": 3,
+        }
+        (self.output_dir / "manifest.json").write_text(
+            json.dumps(manifest, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(
+            layout.SentenceSourceValidationError,
+            r"en-id_sentences_0001\.txt.*pair_count",
+        ):
+            splitter.verify_sentence_source(self.output_dir)
+
+    def test_cli_validation_error_returns_concise_stderr(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "scripts/split_sentence_source.py",
+                "--verify",
+                "--output",
+                str(self.output_dir),
+            ],
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("manifest.json", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
 
     def test_splitter_preserves_preexisting_bak_sibling(self):
         self.source_path.write_text("People.\nRakyat?\n", encoding="utf-8")

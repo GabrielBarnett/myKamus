@@ -2,7 +2,7 @@
 
 myKamus is an open source Indonesian-English dictionary and example sentence search tool. It combines dictionary entries, indexed bilingual sentence pairs, and Red Book headword definitions in a desktop GUI and CLI.
 
-It uses open source bitext corpora to provide access to over 50 million example sentences and word translations for Indonesian ↔ English.
+It uses open source bitext corpora and dictionary data to provide access to over 7 million bilingual example sentence pairs plus Indonesian-English word translations.
 
 ## Features
 
@@ -95,8 +95,8 @@ The GUI is the recommended runtime path for normal use.
 ## Configuration
 
 Runtime settings such as file paths, hotkeys, and the default sentence limit are stored in `config.json`.
-Defaults are tracked in `config.example.json`. The GUI writes local window settings to `config.json`, which is ignored by Git.
-You can create or update `config.json` to customize keyboard shortcuts, sentence limits, cache paths, Red Book indexing, or data file paths.
+Defaults are tracked in `config.example.json`, and the repository includes a starter `config.json` for source-folder use.
+You can update `config.json` locally to customize keyboard shortcuts, sentence limits, cache paths, Red Book indexing, or data file paths.
 
 Generated search indexes live in `.mykamus_cache/` and are rebuilt automatically when the sentence corpus or Red Book PDF changes. They are local runtime data and should not be committed.
 
@@ -128,6 +128,8 @@ Maintainers can rebuild the chunked source files with:
 ~~~bash
 python scripts/split_sentence_source.py --source en-id_sentences.txt --output data/sentence_source
 ~~~
+
+That maintainer rebuild command needs a materialized `en-id_sentences.txt` source file. Normal users do not need that file.
 
 Developers can verify the checked-in chunks with:
 

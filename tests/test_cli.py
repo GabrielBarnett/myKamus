@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 
-from sentence_data.builder import build_sentence_dataset
+from sentence_source.splitter import split_sentence_source
 import red_book_index
 import search_index
 
@@ -20,7 +20,8 @@ class CliTests(unittest.TestCase):
         self.temp_path = Path(self.temp_dir.name)
         dictionary_path = self.temp_path / "dict.txt"
         self.sentences_path = self.temp_path / "sentences.txt"
-        self.dataset_dir = self.temp_path / "sentence_data"
+        self.source_dir = self.temp_path / "sentence_source"
+        self.cache_path = self.temp_path / ".mykamus_cache" / "search.sqlite"
         self.config_path = self.temp_path / "config.json"
         self.red_book_pdf_path = self.temp_path / "red_book.pdf"
         self.red_book_cache_path = self.temp_path / "red_book.sqlite"
@@ -33,12 +34,13 @@ class CliTests(unittest.TestCase):
             "Banyak orang tahu.\n",
             encoding="utf-8",
         )
-        build_sentence_dataset(self.sentences_path, self.dataset_dir)
+        split_sentence_source(self.sentences_path, self.source_dir)
         self.config_path.write_text(
             json.dumps(
                 {
                     "dictionary_path": str(dictionary_path),
-                    "sentence_data_dir": str(self.dataset_dir),
+                    "sentence_source_dir": str(self.source_dir),
+                    "cache_path": str(self.cache_path),
                     "red_book_pdf_path": str(self.red_book_pdf_path),
                     "red_book_cache_path": str(self.red_book_cache_path),
                     "red_book_results_limit": 3,
@@ -95,8 +97,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("Match: Many people know.", result.stdout)
         self.assertIn("All example sentences for the word people have been loaded.", result.stdout)
 
-    def test_normal_query_uses_existing_index_when_available(self):
-        search_index.ensure_sentence_dataset(self.dataset_dir)
+    def test_normal_query_uses_existing_cache_when_available(self):
+        search_index.ensure_sentence_index(self.source_dir, self.cache_path)
         self.sentences_path.unlink()
 
         result = self.run_cli("people")
@@ -105,8 +107,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("Match: People.", result.stdout)
         self.assertIn("Translation: Rakyat?", result.stdout)
 
-    def test_cli_handles_missing_sentence_dataset_without_traceback(self):
-        (self.dataset_dir / "manifest.json").unlink()
+    def test_cli_handles_missing_sentence_source_without_traceback(self):
+        (self.source_dir / "manifest.json").unlink()
 
         result = self.run_cli("people")
 
@@ -114,8 +116,9 @@ class CliTests(unittest.TestCase):
         self.assertEqual("", result.stderr)
         self.assertIn("Example sentences are unavailable right now.", result.stdout)
 
-    def test_cli_handles_corrupt_sentence_dataset_without_traceback(self):
-        (self.dataset_dir / "sentence_index.sqlite").write_text(
+    def test_cli_recovers_from_corrupt_sentence_cache_without_traceback(self):
+        search_index.ensure_sentence_index(self.source_dir, self.cache_path)
+        self.cache_path.write_text(
             "not a sqlite database",
             encoding="utf-8",
         )
@@ -124,7 +127,7 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode)
         self.assertEqual("", result.stderr)
-        self.assertIn("Example sentences are unavailable right now.", result.stdout)
+        self.assertIn("Match: People.", result.stdout)
 
     def test_cli_prints_red_book_results_when_index_is_available(self):
         conn = red_book_index._connect(self.red_book_cache_path)

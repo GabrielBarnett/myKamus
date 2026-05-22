@@ -65,6 +65,13 @@ def _config_paths():
     return [BASE_DIR / "config.example.json", BASE_DIR / "config.json"]
 
 
+def _user_config_paths():
+    env_path = os.environ.get(CONFIG_ENV_VAR)
+    if env_path:
+        return [Path(env_path)]
+    return [BASE_DIR / "config.json"]
+
+
 def load_config():
     global _CONFIG
     if _CONFIG is not None:
@@ -81,7 +88,7 @@ def load_config():
 
 def _load_config_overrides():
     overrides = {}
-    for config_path in _config_paths():
+    for config_path in _user_config_paths():
         if config_path.exists():
             with config_path.open(encoding="utf-8") as config_file:
                 overrides = _deep_update(overrides, json.load(config_file))

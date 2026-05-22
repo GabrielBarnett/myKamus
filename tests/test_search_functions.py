@@ -247,6 +247,37 @@ class SearchFunctionTests(unittest.TestCase):
         finally:
             legacy_temp_dir.cleanup()
 
+    def test_legacy_sentences_config_derives_source_dir_when_example_has_default(self):
+        legacy_temp_dir = tempfile.TemporaryDirectory()
+        legacy_temp_path = Path(legacy_temp_dir.name)
+        try:
+            legacy_sentences_path = legacy_temp_path / "legacy" / "sentences.txt"
+            legacy_sentences_path.parent.mkdir()
+            legacy_sentences_path.write_text("People.\nRakyat?\n", encoding="utf-8")
+            (legacy_temp_path / "config.example.json").write_text(
+                json.dumps({"sentence_source_dir": "data/sentence_source"}),
+                encoding="utf-8",
+            )
+            (legacy_temp_path / "config.json").write_text(
+                json.dumps({"sentences_path": str(legacy_sentences_path)}),
+                encoding="utf-8",
+            )
+
+            old_config = os.environ.pop(sf.CONFIG_ENV_VAR, None)
+            self.reset_search_state()
+            try:
+                with mock.patch.object(sf, "BASE_DIR", legacy_temp_path):
+                    self.assertEqual(
+                        legacy_sentences_path.parent / "data" / "sentence_source",
+                        sf.sentence_source_dir(),
+                    )
+            finally:
+                if old_config is not None:
+                    os.environ[sf.CONFIG_ENV_VAR] = old_config
+                self.reset_search_state()
+        finally:
+            legacy_temp_dir.cleanup()
+
     def test_mid_iteration_failure_returns_unavailable_message_without_partial_sentences(self):
         def broken_sentence_iter(query, limit):
             yield {

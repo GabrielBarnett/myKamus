@@ -69,7 +69,9 @@ class LoadingView(ttk.Frame):
         self.status_var.set(progress.get("status", self.status_var.get()))
 
     def show_error(self):
-        self.status_var.set("Index build failed. Searches will use fallback mode.")
+        self.status_var.set(
+            "Sentence examples are unavailable until the source chunks or cache are repaired."
+        )
 
     def show_ready(self):
         self.percent_var.set("100%")

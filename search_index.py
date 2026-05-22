@@ -199,11 +199,20 @@ def _metadata_signature(metadata):
     return tuple(sorted(metadata.items()))
 
 
+def _chunk_signatures(validated):
+    chunks_dir = validated["paths"].chunks_dir
+    return tuple(
+        _file_signature(chunks_dir / chunk["file"])
+        for chunk in validated["manifest"]["chunks"]
+    )
+
+
 def _validation_cache_key(validated, cache_path, expected_metadata):
     return (
         str(validated["paths"].root.resolve()),
         str(Path(cache_path).resolve()),
         _file_signature(validated["paths"].manifest),
+        _chunk_signatures(validated),
         _file_signature(cache_path),
         _metadata_signature(expected_metadata),
     )
@@ -320,6 +329,10 @@ def is_index_valid(source_dir, cache_path):
         cache_key = _validation_cache_key(validated, cache_path, expected)
         if _VALIDATION_CACHE.get(cache_key):
             return True
+
+        validated = validate_source_dataset(source_dir, verify_checksums=True)
+        expected = _expected_metadata(validated)
+        cache_key = _validation_cache_key(validated, cache_path, expected)
         conn = _connect(cache_path)
         try:
             actual = _read_metadata(conn)

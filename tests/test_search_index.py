@@ -80,6 +80,17 @@ class SearchIndexTests(unittest.TestCase):
         matches = list(search_index.search_sentence_index("new people", 1, self.source_dir, self.cache_path))
         self.assertEqual("New people.", matches[0]["match"])
 
+    def test_index_valid_rejects_same_size_corrupt_chunk(self):
+        search_index.ensure_sentence_index(self.source_dir, self.cache_path)
+        manifest = json.loads((self.source_dir / "manifest.json").read_text(encoding="utf-8"))
+        chunk_path = self.source_dir / "chunks" / manifest["chunks"][0]["file"]
+        original_size = chunk_path.stat().st_size
+        replacement = chunk_path.read_bytes().replace(b"People.", b"Person.", 1)
+        chunk_path.write_bytes(replacement)
+        self.assertEqual(original_size, chunk_path.stat().st_size)
+
+        self.assertFalse(search_index.is_index_valid(self.source_dir, self.cache_path))
+
     def test_failed_rebuild_keeps_existing_cache(self):
         search_index.ensure_sentence_index(self.source_dir, self.cache_path)
         original_source = (

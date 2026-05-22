@@ -94,7 +94,7 @@ def _validate_chunk_file_name(chunk_file):
         )
 
 
-def _validate_chunk_entry(chunk, chunks_dir, verify_checksums):
+def _validate_chunk_entry(chunk, chunks_dir, verify_checksums, expected_index):
     if not isinstance(chunk, dict):
         raise SentenceSourceValidationError(
             "Sentence source manifest chunk entries must be objects."
@@ -108,6 +108,12 @@ def _validate_chunk_entry(chunk, chunks_dir, verify_checksums):
         ) from error
 
     _validate_chunk_file_name(chunk_file)
+    expected_file = f"en-id_sentences_{expected_index:04d}.txt"
+    if chunk_file != expected_file:
+        raise SentenceSourceValidationError(
+            "Sentence source manifest chunk files must be ascending and consecutive "
+            f"from en-id_sentences_0001.txt; expected {expected_file}, got {chunk_file}."
+        )
 
     chunk_path = chunks_dir / chunk_file
     if not chunk_path.is_file():
@@ -168,8 +174,13 @@ def validate_source_dataset(source_dir, verify_checksums=False):
         raise SentenceSourceValidationError("Sentence source manifest does not list any chunks.")
 
     total_pair_count = 0
-    for chunk in chunks:
-        total_pair_count += _validate_chunk_entry(chunk, paths.chunks_dir, verify_checksums)
+    for expected_index, chunk in enumerate(chunks, start=1):
+        total_pair_count += _validate_chunk_entry(
+            chunk,
+            paths.chunks_dir,
+            verify_checksums,
+            expected_index,
+        )
 
     declared_total_pair_count = _require_int(
         manifest.get("total_pair_count"),

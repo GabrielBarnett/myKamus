@@ -111,7 +111,7 @@ class TkLoadingViewTests(unittest.TestCase):
         )
         view.show_error()
         self.assertEqual(
-            "Index build failed. Searches will use fallback mode.",
+            "Sentence examples are unavailable until the source chunks or cache are repaired.",
             view.status_var.get(),
         )
 

@@ -94,6 +94,14 @@ class SentenceSourceLayoutTests(unittest.TestCase):
         with self.assertRaisesRegex(layout.SentenceSourceValidationError, "basename"):
             layout.validate_source_dataset(self.root)
 
+    def test_rejects_reordered_chunk_files(self):
+        first_chunk = self.write_chunk("en-id_sentences_0001.txt", "People.\nRakyat?\n")
+        second_chunk = self.write_chunk("en-id_sentences_0002.txt", "Language.\nBahasa.\n")
+        self.write_manifest([self.chunk_entry(second_chunk), self.chunk_entry(first_chunk)])
+
+        with self.assertRaisesRegex(layout.SentenceSourceValidationError, "ascending"):
+            layout.validate_source_dataset(self.root)
+
     def test_rejects_oversized_chunk_from_manifest_or_disk(self):
         chunk = self.write_chunk("en-id_sentences_0001.txt", "People.\nRakyat?\n")
         entry = self.chunk_entry(chunk)

@@ -5,6 +5,9 @@ __pycache__/
 .mykamus_cache/
 .worktrees/
 
+# Maintainer-only source used to regenerate data/sentence_source chunks.
+en-id_sentences.txt
+
 # Local runtime settings written by the GUI.
 config.json
 myKamus_setup.log

@@ -1,337 +1,366 @@
 """
-Dataset-backed sentence-pair search for myKamus.
+SQLite-backed local sentence-pair cache for myKamus.
 """
 
-from collections import defaultdict
+from pathlib import Path
+import hashlib
+import os
 import re
 import sqlite3
 
-from sentence_data.layout import SentenceDataValidationError, validate_dataset
+from sentence_source import layout as source_layout
+from sentence_source.layout import SentenceSourceValidationError, validate_source_dataset
+
+
+SCHEMA_VERSION = "1"
+PROGRESS_STEP_BYTES = 1024 * 1024
+BATCH_SIZE = 5000
 
 
 class IndexUnavailableError(RuntimeError):
     pass
 
 
-TOKEN_PATTERN = re.compile(r"\b\w+\b", re.IGNORECASE)
-_VALIDATION_CACHE = {}
+def _connect(cache_path):
+    return sqlite3.connect(str(cache_path))
 
 
-def _connect(path):
-    return sqlite3.connect(str(path))
-
-
-def _translate_sqlite_error(error):
-    raise IndexUnavailableError("Sentence dataset is unavailable.") from error
-
-
-def _connect_or_raise(path):
-    try:
-        return _connect(path)
-    except sqlite3.Error as error:
-        _translate_sqlite_error(error)
-
-
-def _query_scalar(path, query):
-    conn = _connect_or_raise(path)
-    try:
-        try:
-            row = conn.execute(query).fetchone()
-        except sqlite3.Error as error:
-            _translate_sqlite_error(error)
-        return None if row is None else row[0]
-    finally:
-        conn.close()
-
-
-def _tokenize_text(text):
-    return sorted({token.casefold() for token in TOKEN_PATTERN.findall(text)})
-
-
-def _collect_terms_by_sentence(index_conn, first_sentence_id, last_sentence_id):
-    rows = index_conn.execute(
-        """
-        SELECT sentence_id, term
-        FROM sentence_terms
-        WHERE sentence_id BETWEEN ? AND ?
-        ORDER BY sentence_id, term
-        """,
-        (first_sentence_id, last_sentence_id),
-    ).fetchall()
-    terms_by_sentence = {}
-    for sentence_id, term in rows:
-        terms_by_sentence.setdefault(sentence_id, []).append(term)
-    return terms_by_sentence
-
-
-def _file_signature(path):
-    try:
-        stat = path.stat()
-    except OSError as error:
-        raise IndexUnavailableError("Sentence dataset is unavailable.") from error
-    return (str(path), stat.st_size, stat.st_mtime_ns)
-
-
-def _dataset_cache_key(validated):
-    return str(validated["paths"].root.resolve())
-
-
-def _dataset_signature(validated):
-    try:
-        paths = validated["paths"]
-        shard_signatures = tuple(
-            _file_signature(paths.shards_dir / shard["file"])
-            for shard in validated["manifest"]["shards"]
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise IndexUnavailableError("Sentence dataset is unavailable.") from error
-    return (
-        _file_signature(paths.manifest),
-        _file_signature(paths.index),
-        shard_signatures,
-    )
-
-
-def _validate_runtime_dataset_fresh(validated):
-    paths = validated["paths"]
-    index_conn = _connect_or_raise(paths.index)
-    try:
-        lookup_count = index_conn.execute(
-            "SELECT COUNT(*) FROM sentence_lookup"
-        ).fetchone()[0]
-        term_sentence_count = index_conn.execute(
-            "SELECT COUNT(DISTINCT sentence_id) FROM sentence_terms"
-        ).fetchone()[0]
-        if not lookup_count or term_sentence_count != lookup_count:
-            raise IndexUnavailableError("Sentence dataset is unavailable.")
-
-        shard_row_count = 0
-        for shard in validated["manifest"]["shards"]:
-            shard_path = paths.shards_dir / shard["file"]
-            row_count = _query_scalar(
-                shard_path,
-                "SELECT COUNT(*) FROM sentence_pairs",
-            )
-            if not row_count:
-                raise IndexUnavailableError("Sentence dataset is unavailable.")
-            shard_row_count += row_count
-
-            expected_count = shard["last_sentence_id"] - shard["first_sentence_id"] + 1
-            lookup_stats = index_conn.execute(
-                """
-                SELECT COUNT(*), MIN(sentence_id), MAX(sentence_id)
-                FROM sentence_lookup
-                WHERE shard_file = ?
-                """,
-                (shard["file"],),
-            ).fetchone()
-            if lookup_stats is None:
-                raise IndexUnavailableError("Sentence dataset is unavailable.")
-            lookup_count_for_shard, min_sentence_id, max_sentence_id = lookup_stats
-            if (
-                lookup_count_for_shard != expected_count
-                or min_sentence_id != shard["first_sentence_id"]
-                or max_sentence_id != shard["last_sentence_id"]
-            ):
-                raise IndexUnavailableError("Sentence dataset is unavailable.")
-
-            terms_by_sentence = _collect_terms_by_sentence(
-                index_conn,
-                shard["first_sentence_id"],
-                shard["last_sentence_id"],
-            )
-            shard_conn = _connect_or_raise(shard_path)
-            try:
-                shard_rows = shard_conn.execute(
-                    """
-                    SELECT id, english, indonesian
-                    FROM sentence_pairs
-                    WHERE id BETWEEN ? AND ?
-                    ORDER BY id
-                    """,
-                    (shard["first_sentence_id"], shard["last_sentence_id"]),
-                ).fetchall()
-            finally:
-                shard_conn.close()
-
-            sentence_ids = {row[0] for row in shard_rows}
-            if sentence_ids != set(terms_by_sentence):
-                raise IndexUnavailableError("Sentence dataset is unavailable.")
-
-            for sentence_id, english, indonesian in shard_rows:
-                expected_terms = sorted(
-                    set(_tokenize_text(english) + _tokenize_text(indonesian))
-                )
-                if terms_by_sentence.get(sentence_id, []) != expected_terms:
-                    raise IndexUnavailableError("Sentence dataset is unavailable.")
-
-        if shard_row_count != lookup_count:
-            raise IndexUnavailableError("Sentence dataset is unavailable.")
-    except sqlite3.Error as error:
-        _translate_sqlite_error(error)
-    finally:
-        index_conn.close()
-
-
-def _validate_runtime_dataset(dataset_dir):
-    cache_key = None
-    try:
-        validated = validate_dataset(dataset_dir)
-        cache_key = _dataset_cache_key(validated)
-        signature = _dataset_signature(validated)
-        cached_signature = _VALIDATION_CACHE.get(cache_key)
-        if cached_signature == signature:
-            return validated
-
-        _validate_runtime_dataset_fresh(validated)
-        _VALIDATION_CACHE[cache_key] = signature
-        return validated
-    except SentenceDataValidationError as error:
-        if cache_key is not None:
-            _VALIDATION_CACHE.pop(cache_key, None)
-        raise IndexUnavailableError(str(error)) from error
-    except (UnicodeDecodeError, KeyError, TypeError, ValueError) as error:
-        if cache_key is not None:
-            _VALIDATION_CACHE.pop(cache_key, None)
-        raise IndexUnavailableError("Sentence dataset is unavailable.") from error
-    except IndexUnavailableError:
-        if cache_key is not None:
-            _VALIDATION_CACHE.pop(cache_key, None)
-        raise
-
-
-def is_dataset_valid(dataset_dir):
-    try:
-        _validate_runtime_dataset(dataset_dir)
-        return True
-    except IndexUnavailableError:
-        return False
-
-
-def ensure_sentence_dataset(dataset_dir, progress_callback=None):
-    validated = _validate_runtime_dataset(dataset_dir)
-
-    if progress_callback is not None:
-        progress_callback(
-            {
-                "title": "Validating sentence dataset...",
-                "percent": 100.0,
-                "complete": True,
-            }
-        )
-    return {
-        "dataset_dir": str(validated["paths"].root),
-        "rebuilt": False,
-        "validated": True,
-    }
+def _clean_line(line):
+    return " ".join(line.strip().split())
 
 
 def _build_phrase_pattern(query):
     return re.compile(rf"(?<!\w){re.escape(query)}(?!\w)", re.IGNORECASE)
 
 
-def _tokenize_query(query):
-    return sorted({token.casefold() for token in TOKEN_PATTERN.findall(query)})
+def _has_fts5(conn):
+    try:
+        conn.execute("CREATE VIRTUAL TABLE fts_probe USING fts5(value)")
+        conn.execute("DROP TABLE fts_probe")
+        return True
+    except sqlite3.OperationalError:
+        return False
 
 
-def _candidate_ids(index_conn, query):
-    tokens = _tokenize_query(query)
-    if not tokens:
-        return []
+def _read_metadata(conn):
+    try:
+        rows = conn.execute("SELECT key, value FROM metadata").fetchall()
+    except sqlite3.Error:
+        return {}
+    return dict(rows)
 
-    placeholders = ",".join("?" for _ in tokens)
-    rows = index_conn.execute(
-        f"""
-        SELECT sentence_id
-        FROM sentence_terms
-        WHERE term IN ({placeholders})
-        GROUP BY sentence_id
-        HAVING COUNT(DISTINCT term) = ?
-        ORDER BY sentence_id
+
+def _expected_metadata(validated, fts_enabled=None):
+    metadata = {
+        "schema_version": SCHEMA_VERSION,
+        "source_schema_version": source_layout.SCHEMA_VERSION,
+        "source_manifest_signature": validated["manifest_signature"],
+        "source_pair_count": str(validated["total_pair_count"]),
+    }
+    if fts_enabled is not None:
+        metadata["fts_enabled"] = "1" if fts_enabled else "0"
+    return metadata
+
+
+def _write_metadata(conn, metadata):
+    conn.executemany(
+        "INSERT INTO metadata(key, value) VALUES (?, ?)",
+        sorted(metadata.items()),
+    )
+
+
+def _create_schema(conn, fts_enabled):
+    conn.executescript(
+        """
+        CREATE TABLE metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+
+        CREATE TABLE sentence_pairs (
+            id INTEGER PRIMARY KEY,
+            english TEXT NOT NULL,
+            indonesian TEXT NOT NULL
+        );
+        """
+    )
+    if fts_enabled:
+        conn.execute(
+            "CREATE VIRTUAL TABLE sentence_pairs_fts USING fts5(english, indonesian)"
+        )
+
+
+def _emit_progress(progress_callback, processed_bytes, total_bytes, force=False):
+    if progress_callback is None:
+        return
+    percent = 100.0 if total_bytes <= 0 else min(100.0, processed_bytes * 100.0 / total_bytes)
+    progress_callback(
+        {
+            "title": "Building sentence cache...",
+            "processed_bytes": processed_bytes,
+            "total_bytes": total_bytes,
+            "percent": percent,
+            "complete": force or processed_bytes >= total_bytes,
+        }
+    )
+
+
+def _insert_batch(conn, batch, fts_enabled):
+    conn.executemany(
+        "INSERT INTO sentence_pairs(english, indonesian) VALUES (?, ?)",
+        batch,
+    )
+    if fts_enabled:
+        start_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0] - len(batch) + 1
+        fts_rows = [
+            (start_id + offset, english, indonesian)
+            for offset, (english, indonesian) in enumerate(batch)
+        ]
+        conn.executemany(
+            "INSERT INTO sentence_pairs_fts(rowid, english, indonesian) VALUES (?, ?, ?)",
+            fts_rows,
+        )
+
+
+def _iter_chunk_pairs(chunk_path, expected_sha256, progress):
+    digest = hashlib.sha256()
+    pending_english = None
+    pair_count = 0
+    processed_bytes = 0
+
+    with Path(chunk_path).open("rb") as chunk_file:
+        for raw_line in chunk_file:
+            digest.update(raw_line)
+            processed_bytes += len(raw_line)
+            line = _clean_line(raw_line.decode("utf-8", errors="replace"))
+            if not line:
+                yield None, processed_bytes
+                continue
+            if pending_english is None:
+                pending_english = line
+            else:
+                pair_count += 1
+                yield (pending_english, line), processed_bytes
+                pending_english = None
+
+    if pending_english is not None:
+        raise SentenceSourceValidationError(
+            f"Sentence source chunk {Path(chunk_path).name} has an unmatched trailing line."
+        )
+    if digest.hexdigest() != expected_sha256:
+        raise SentenceSourceValidationError(
+            f"Sentence source chunk checksum does not match manifest: {Path(chunk_path).name}"
+        )
+    progress["pair_count"] = pair_count
+
+
+def _validate_cache_shape(conn, metadata):
+    pair_count = conn.execute("SELECT COUNT(*) FROM sentence_pairs").fetchone()[0]
+    if str(pair_count) != metadata.get("source_pair_count"):
+        return False
+    if metadata.get("fts_enabled") == "1":
+        fts_count = conn.execute("SELECT COUNT(*) FROM sentence_pairs_fts").fetchone()[0]
+        if fts_count != pair_count:
+            return False
+    return True
+
+
+def build_sentence_index(source_dir, cache_path, progress_callback=None, validated=None):
+    if validated is None:
+        validated = validate_source_dataset(source_dir, verify_checksums=False)
+
+    cache_path = Path(cache_path)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = cache_path.with_name(cache_path.name + ".tmp")
+    if temp_path.exists():
+        temp_path.unlink()
+
+    chunks_dir = validated["paths"].chunks_dir
+    chunks = validated["manifest"]["chunks"]
+    total_bytes = sum(chunk["size_bytes"] for chunk in chunks)
+    processed_bytes = 0
+    last_reported_bytes = 0
+    batch = []
+    inserted_pairs = 0
+
+    _emit_progress(progress_callback, 0, total_bytes)
+    conn = _connect(temp_path)
+    try:
+        fts_enabled = _has_fts5(conn)
+        _create_schema(conn, fts_enabled)
+        _write_metadata(conn, _expected_metadata(validated, fts_enabled))
+
+        bytes_before_chunk = 0
+        for chunk in chunks:
+            chunk_progress = {}
+            for pair, chunk_processed in _iter_chunk_pairs(
+                chunks_dir / chunk["file"],
+                chunk["sha256"],
+                chunk_progress,
+            ):
+                processed_bytes = bytes_before_chunk + chunk_processed
+                if pair is not None:
+                    batch.append(pair)
+                    if len(batch) >= BATCH_SIZE:
+                        _insert_batch(conn, batch, fts_enabled)
+                        inserted_pairs += len(batch)
+                        batch.clear()
+                if processed_bytes - last_reported_bytes >= PROGRESS_STEP_BYTES:
+                    _emit_progress(progress_callback, processed_bytes, total_bytes)
+                    last_reported_bytes = processed_bytes
+            if chunk_progress.get("pair_count") != chunk["pair_count"]:
+                raise SentenceSourceValidationError(
+                    f"Sentence source chunk {chunk['file']} pair_count does not match parsed pairs."
+                )
+            bytes_before_chunk += chunk["size_bytes"]
+
+        if batch:
+            _insert_batch(conn, batch, fts_enabled)
+            inserted_pairs += len(batch)
+        if inserted_pairs != validated["total_pair_count"]:
+            raise SentenceSourceValidationError(
+                "Sentence source manifest total_pair_count does not match parsed pairs."
+            )
+
+        conn.commit()
+    except Exception:
+        conn.close()
+        if temp_path.exists():
+            temp_path.unlink()
+        raise
+    else:
+        conn.close()
+        os.replace(temp_path, cache_path)
+        _emit_progress(progress_callback, total_bytes, total_bytes, force=True)
+        return {
+            "cache_path": str(cache_path),
+            "source_dir": str(validated["paths"].root),
+            "fts_enabled": fts_enabled,
+        }
+
+
+def is_index_valid(source_dir, cache_path):
+    cache_path = Path(cache_path)
+    if not cache_path.is_file():
+        return False
+    try:
+        validated = validate_source_dataset(source_dir, verify_checksums=False)
+        conn = _connect(cache_path)
+        try:
+            actual = _read_metadata(conn)
+            expected = _expected_metadata(validated)
+            if not all(actual.get(key) == value for key, value in expected.items()):
+                return False
+            if actual.get("fts_enabled") not in {"0", "1"}:
+                return False
+            return _validate_cache_shape(conn, actual)
+        finally:
+            conn.close()
+    except (OSError, sqlite3.Error, SentenceSourceValidationError, UnicodeDecodeError, KeyError, TypeError, ValueError):
+        return False
+
+
+def ensure_sentence_index(source_dir, cache_path, progress_callback=None):
+    validated = validate_source_dataset(source_dir, verify_checksums=False)
+    if is_index_valid(source_dir, cache_path):
+        total_bytes = sum(chunk["size_bytes"] for chunk in validated["manifest"]["chunks"])
+        _emit_progress(progress_callback, total_bytes, total_bytes, force=True)
+        return {"cache_path": str(Path(cache_path)), "rebuilt": False}
+    result = build_sentence_index(source_dir, cache_path, progress_callback, validated=validated)
+    result["rebuilt"] = True
+    return result
+
+
+def _fts_query(query):
+    terms = re.findall(r"\w+", query.casefold())
+    if not terms:
+        return None
+    if len(terms) == 1:
+        return '"' + terms[0].replace('"', '""') + '"'
+    return '"' + " ".join(term.replace('"', '""') for term in terms) + '"'
+
+
+def _escape_like(value):
+    return (
+        value.replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
+
+
+def _iter_candidate_pairs(conn, query):
+    metadata = _read_metadata(conn)
+    if metadata.get("fts_enabled") == "1":
+        query_string = _fts_query(query)
+        if query_string is not None:
+            yield from conn.execute(
+                """
+                SELECT p.english, p.indonesian
+                FROM sentence_pairs_fts f
+                JOIN sentence_pairs p ON p.id = f.rowid
+                WHERE sentence_pairs_fts MATCH ?
+                ORDER BY p.id
+                """,
+                (query_string,),
+            )
+            return
+
+    like_query = "%" + _escape_like(query.casefold()) + "%"
+    yield from conn.execute(
+        """
+        SELECT english, indonesian
+        FROM sentence_pairs
+        WHERE lower(english) LIKE ? ESCAPE '\\'
+           OR lower(indonesian) LIKE ? ESCAPE '\\'
+        ORDER BY id
         """,
-        [*tokens, len(tokens)],
-    ).fetchall()
-    return [row[0] for row in rows]
+        (like_query, like_query),
+    )
 
 
-def search_sentence_index(query, limit, dataset_dir):
-    validated = _validate_runtime_dataset(dataset_dir)
+def search_sentence_index(query, limit, source_dir, cache_path):
+    if not is_index_valid(source_dir, cache_path):
+        raise IndexUnavailableError("Sentence index is missing or stale.")
 
-    paths = validated["paths"]
     pattern = _build_phrase_pattern(query)
     emitted = set()
     emitted_count = 0
+    try:
+        conn = _connect(cache_path)
+    except sqlite3.Error as error:
+        raise IndexUnavailableError("Sentence index is missing or stale.") from error
 
-    index_conn = _connect_or_raise(paths.index)
     try:
         try:
-            ids = _candidate_ids(index_conn, query)
-            if not ids:
-                return
-
-            placeholders = ",".join("?" for _ in ids)
-            rows = index_conn.execute(
-                f"""
-                SELECT sentence_id, shard_file
-                FROM sentence_lookup
-                WHERE sentence_id IN ({placeholders})
-                ORDER BY sentence_id
-                """,
-                ids,
-            ).fetchall()
+            for english, indonesian in _iter_candidate_pairs(conn, query):
+                english_matches = bool(pattern.search(english))
+                indonesian_matches = bool(pattern.search(indonesian))
+                if not english_matches and not indonesian_matches:
+                    continue
+                pair_key = (english, indonesian)
+                if pair_key in emitted:
+                    continue
+                if limit is not None and emitted_count >= limit:
+                    break
+                emitted.add(pair_key)
+                emitted_count += 1
+                if indonesian_matches:
+                    yield {
+                        "match": indonesian,
+                        "translation": english,
+                        "matched_language": "indonesian",
+                        "english": english,
+                        "indonesian": indonesian,
+                    }
+                else:
+                    yield {
+                        "match": english,
+                        "translation": indonesian,
+                        "matched_language": "english",
+                        "english": english,
+                        "indonesian": indonesian,
+                    }
         except sqlite3.Error as error:
-            _translate_sqlite_error(error)
+            raise IndexUnavailableError("Sentence index is missing or stale.") from error
     finally:
-        index_conn.close()
-
-    grouped = defaultdict(list)
-    for sentence_id, shard_file in rows:
-        grouped[shard_file].append(sentence_id)
-
-    for shard_file, sentence_ids in grouped.items():
-        shard_conn = _connect_or_raise(paths.shards_dir / shard_file)
-        try:
-            try:
-                placeholders = ",".join("?" for _ in sentence_ids)
-                for sentence_id, english, indonesian in shard_conn.execute(
-                    f"""
-                    SELECT id, english, indonesian
-                    FROM sentence_pairs
-                    WHERE id IN ({placeholders})
-                    ORDER BY id
-                    """,
-                    sentence_ids,
-                ):
-                    english_matches = bool(pattern.search(english))
-                    indonesian_matches = bool(pattern.search(indonesian))
-                    if not english_matches and not indonesian_matches:
-                        continue
-
-                    pair_key = (english, indonesian)
-                    if pair_key in emitted:
-                        continue
-                    if limit is not None and emitted_count >= limit:
-                        return
-
-                    emitted.add(pair_key)
-                    emitted_count += 1
-                    if indonesian_matches:
-                        yield {
-                            "match": indonesian,
-                            "translation": english,
-                            "matched_language": "indonesian",
-                            "english": english,
-                            "indonesian": indonesian,
-                        }
-                    else:
-                        yield {
-                            "match": english,
-                            "translation": indonesian,
-                            "matched_language": "english",
-                            "english": english,
-                            "indonesian": indonesian,
-                        }
-            except sqlite3.Error as error:
-                _translate_sqlite_error(error)
-        finally:
-            shard_conn.close()
+        conn.close()

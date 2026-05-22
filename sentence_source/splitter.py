@@ -82,23 +82,39 @@ def _write_manifest(root, chunks):
     return manifest
 
 
+def _move_directory(source, destination):
+    Path(source).replace(destination)
+
+
+def _unique_backup_path(output_dir):
+    backup_dir = Path(tempfile.mkdtemp(
+        prefix=f".{output_dir.name}.",
+        suffix=".bak",
+        dir=output_dir.parent,
+    ))
+    backup_dir.rmdir()
+    return backup_dir
+
+
 def _replace_output_dir(staging_root, output_dir):
     output_dir = Path(output_dir)
     backup_dir = None
+    success = False
+    # Windows stdlib cannot atomically replace populated directories, so this
+    # uses a best-effort swap with rollback to preserve the previous output.
     if output_dir.exists():
-        backup_dir = output_dir.with_name(f"{output_dir.name}.bak")
-        if backup_dir.exists():
-            shutil.rmtree(backup_dir)
-        output_dir.replace(backup_dir)
+        backup_dir = _unique_backup_path(output_dir)
+        _move_directory(output_dir, backup_dir)
 
     try:
-        staging_root.replace(output_dir)
+        _move_directory(staging_root, output_dir)
+        success = True
     except Exception:
         if backup_dir is not None and backup_dir.exists() and not output_dir.exists():
-            backup_dir.replace(output_dir)
+            _move_directory(backup_dir, output_dir)
         raise
-    else:
-        if backup_dir is not None and backup_dir.exists():
+    finally:
+        if success and backup_dir is not None and backup_dir.exists():
             shutil.rmtree(backup_dir)
 
 

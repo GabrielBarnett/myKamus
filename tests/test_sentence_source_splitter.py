@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 from sentence_source import layout, splitter
 
@@ -103,6 +104,49 @@ class SentenceSourceSplitterTests(unittest.TestCase):
 
         self.assertEqual(1, result["total_pair_count"])
         self.assertEqual(1, result["chunk_count"])
+
+    def test_splitter_preserves_preexisting_bak_sibling(self):
+        self.source_path.write_text("People.\nRakyat?\n", encoding="utf-8")
+        splitter.split_sentence_source(self.source_path, self.output_dir)
+        bak_dir = self.temp_path / "sentence_source.bak"
+        bak_dir.mkdir()
+        (bak_dir / "user-file.txt").write_text("keep me", encoding="utf-8")
+        self.source_path.write_text("That brat.\nBocah itu.\n", encoding="utf-8")
+
+        splitter.split_sentence_source(self.source_path, self.output_dir)
+
+        self.assertEqual(
+            "keep me",
+            (bak_dir / "user-file.txt").read_text(encoding="utf-8"),
+        )
+
+    def test_failed_replacement_restores_previous_output(self):
+        self.source_path.write_text("People.\nRakyat?\n", encoding="utf-8")
+        splitter.split_sentence_source(self.source_path, self.output_dir)
+        previous_manifest = (self.output_dir / "manifest.json").read_text(encoding="utf-8")
+        self.source_path.write_text("That brat.\nBocah itu.\n", encoding="utf-8")
+
+        move_calls = []
+
+        def fail_staging_to_output(source, destination):
+            move_calls.append((Path(source), Path(destination)))
+            if len(move_calls) == 2:
+                raise OSError("simulated move failure")
+            Path(source).replace(destination)
+
+        with mock.patch(
+            "sentence_source.splitter._move_directory",
+            side_effect=fail_staging_to_output,
+            create=True,
+        ):
+            with self.assertRaisesRegex(OSError, "simulated move failure"):
+                splitter.split_sentence_source(self.source_path, self.output_dir)
+
+        self.assertTrue(self.output_dir.is_dir())
+        self.assertEqual(
+            previous_manifest,
+            (self.output_dir / "manifest.json").read_text(encoding="utf-8"),
+        )
 
 
 if __name__ == "__main__":

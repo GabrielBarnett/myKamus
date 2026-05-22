@@ -21,6 +21,16 @@ class IndexUnavailableError(RuntimeError):
     pass
 
 
+SOURCE_FAILURES = (
+    OSError,
+    SentenceSourceValidationError,
+    UnicodeDecodeError,
+    KeyError,
+    TypeError,
+    ValueError,
+)
+
+
 def _connect(cache_path):
     return sqlite3.connect(str(cache_path))
 
@@ -165,27 +175,37 @@ def _validate_cache_shape(conn, metadata):
     return True
 
 
+def _remove_temp_cache(temp_path):
+    if Path(temp_path).exists():
+        Path(temp_path).unlink()
+
+
+def _raise_index_unavailable(error):
+    raise IndexUnavailableError("Sentence index is missing or stale.") from error
+
+
 def build_sentence_index(source_dir, cache_path, progress_callback=None, validated=None):
-    if validated is None:
-        validated = validate_source_dataset(source_dir, verify_checksums=False)
-
-    cache_path = Path(cache_path)
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = cache_path.with_name(cache_path.name + ".tmp")
-    if temp_path.exists():
-        temp_path.unlink()
-
-    chunks_dir = validated["paths"].chunks_dir
-    chunks = validated["manifest"]["chunks"]
-    total_bytes = sum(chunk["size_bytes"] for chunk in chunks)
-    processed_bytes = 0
-    last_reported_bytes = 0
-    batch = []
-    inserted_pairs = 0
-
-    _emit_progress(progress_callback, 0, total_bytes)
-    conn = _connect(temp_path)
+    conn = None
+    temp_path = None
     try:
+        if validated is None:
+            validated = validate_source_dataset(source_dir, verify_checksums=False)
+
+        cache_path = Path(cache_path)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = cache_path.with_name(cache_path.name + ".tmp")
+        _remove_temp_cache(temp_path)
+
+        chunks_dir = validated["paths"].chunks_dir
+        chunks = validated["manifest"]["chunks"]
+        total_bytes = sum(chunk["size_bytes"] for chunk in chunks)
+        processed_bytes = 0
+        last_reported_bytes = 0
+        batch = []
+        inserted_pairs = 0
+
+        _emit_progress(progress_callback, 0, total_bytes)
+        conn = _connect(temp_path)
         fts_enabled = _has_fts5(conn)
         _create_schema(conn, fts_enabled)
         _write_metadata(conn, _expected_metadata(validated, fts_enabled))
@@ -223,20 +243,31 @@ def build_sentence_index(source_dir, cache_path, progress_callback=None, validat
             )
 
         conn.commit()
-    except Exception:
         conn.close()
-        if temp_path.exists():
-            temp_path.unlink()
-        raise
-    else:
-        conn.close()
-        os.replace(temp_path, cache_path)
+        conn = None
+        try:
+            os.replace(temp_path, cache_path)
+        except OSError as error:
+            _remove_temp_cache(temp_path)
+            _raise_index_unavailable(error)
         _emit_progress(progress_callback, total_bytes, total_bytes, force=True)
         return {
             "cache_path": str(cache_path),
             "source_dir": str(validated["paths"].root),
             "fts_enabled": fts_enabled,
         }
+    except SOURCE_FAILURES as error:
+        if conn is not None:
+            conn.close()
+        if temp_path is not None:
+            _remove_temp_cache(temp_path)
+        _raise_index_unavailable(error)
+    except Exception:
+        if conn is not None:
+            conn.close()
+        if temp_path is not None:
+            _remove_temp_cache(temp_path)
+        raise
 
 
 def is_index_valid(source_dir, cache_path):
@@ -261,7 +292,10 @@ def is_index_valid(source_dir, cache_path):
 
 
 def ensure_sentence_index(source_dir, cache_path, progress_callback=None):
-    validated = validate_source_dataset(source_dir, verify_checksums=False)
+    try:
+        validated = validate_source_dataset(source_dir, verify_checksums=False)
+    except SOURCE_FAILURES as error:
+        _raise_index_unavailable(error)
     if is_index_valid(source_dir, cache_path):
         total_bytes = sum(chunk["size_bytes"] for chunk in validated["manifest"]["chunks"])
         _emit_progress(progress_callback, total_bytes, total_bytes, force=True)

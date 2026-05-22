@@ -80,6 +80,16 @@ class SearchIndexTests(unittest.TestCase):
 
     def test_failed_rebuild_keeps_existing_cache(self):
         search_index.ensure_sentence_index(self.source_dir, self.cache_path)
+        original_source = (
+            "People.\n"
+            "Rakyat?\n\n"
+            "That brat.\n"
+            "Bocah itu.\n\n"
+            "Many people know.\n"
+            "Banyak orang tahu.\n\n"
+            "Many people know.\n"
+            "Banyak orang tahu.\n"
+        )
         self.source_path.write_text("New people.\nRakyat baru.\n", encoding="utf-8")
         splitter.split_sentence_source(self.source_path, self.source_dir)
 
@@ -89,6 +99,26 @@ class SearchIndexTests(unittest.TestCase):
 
         self.assertTrue(self.cache_path.is_file())
         self.assertFalse(self.cache_path.with_name(self.cache_path.name + ".tmp").exists())
+        self.source_path.write_text(original_source, encoding="utf-8")
+        splitter.split_sentence_source(self.source_path, self.source_dir)
+        old_matches = list(search_index.search_sentence_index("people", 1, self.source_dir, self.cache_path))
+        self.assertEqual("People.", old_matches[0]["match"])
+
+    def test_replace_failure_removes_temp_cache_and_keeps_existing_cache(self):
+        search_index.ensure_sentence_index(self.source_dir, self.cache_path)
+        original_source = self.source_path.read_text(encoding="utf-8")
+        self.source_path.write_text("New people.\nRakyat baru.\n", encoding="utf-8")
+        splitter.split_sentence_source(self.source_path, self.source_dir)
+
+        with mock.patch("search_index.os.replace", side_effect=OSError("locked")):
+            with self.assertRaises(search_index.IndexUnavailableError):
+                search_index.ensure_sentence_index(self.source_dir, self.cache_path)
+
+        self.assertFalse(self.cache_path.with_name(self.cache_path.name + ".tmp").exists())
+        self.source_path.write_text(original_source, encoding="utf-8")
+        splitter.split_sentence_source(self.source_path, self.source_dir)
+        old_matches = list(search_index.search_sentence_index("people", 1, self.source_dir, self.cache_path))
+        self.assertEqual("People.", old_matches[0]["match"])
 
     def test_missing_source_chunks_raise_index_unavailable(self):
         for path in (self.source_dir / "chunks").glob("*.txt"):
@@ -96,6 +126,13 @@ class SearchIndexTests(unittest.TestCase):
 
         with self.assertRaises(search_index.IndexUnavailableError):
             list(search_index.search_sentence_index("people", 1, self.source_dir, self.cache_path))
+
+    def test_missing_source_chunks_raise_index_unavailable_on_ensure(self):
+        for path in (self.source_dir / "chunks").glob("*.txt"):
+            path.unlink()
+
+        with self.assertRaises(search_index.IndexUnavailableError):
+            search_index.ensure_sentence_index(self.source_dir, self.cache_path)
 
     def test_phrase_search_like_that_brat(self):
         search_index.ensure_sentence_index(self.source_dir, self.cache_path)

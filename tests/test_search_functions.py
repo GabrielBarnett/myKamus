@@ -128,6 +128,23 @@ class SearchFunctionTests(unittest.TestCase):
         self.assertEqual("english", result["sentences"][0]["matched_language"])
         self.assertTrue(result["sentences_truncated"])
 
+    def test_cached_sentence_search_validates_source_checksums_once_per_query(self):
+        sf.ensure_sentence_index()
+
+        with mock.patch(
+            "search_index.validate_source_dataset",
+            wraps=sf.search_index.validate_source_dataset,
+        ) as validate_source_dataset:
+            result = list(sf.iter_matching_indexed_sentence_pairs("people", 1))
+
+        checksum_validations = [
+            call
+            for call in validate_source_dataset.call_args_list
+            if call.kwargs.get("verify_checksums") is True
+        ]
+        self.assertEqual("People.", result[0]["match"])
+        self.assertLessEqual(len(checksum_validations), 1)
+
     def test_sentence_search_builds_cache_from_chunks_without_raw_source_file(self):
         self.sentences_path.unlink()
 

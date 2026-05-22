@@ -254,14 +254,26 @@ def format_red_book_definition_block(index, result):
 
 
 def iter_matching_indexed_sentence_pairs(query, limit):
-    if not is_sentence_index_valid():
+    yielded_any = False
+    try:
+        for sentence in search_index.search_sentence_index(
+            query,
+            limit,
+            sentence_source_dir(),
+            cache_path(),
+        ):
+            yielded_any = True
+            yield sentence
+    except search_index.IndexUnavailableError:
+        if yielded_any:
+            raise
         ensure_sentence_index()
-    yield from search_index.search_sentence_index(
-        query,
-        limit,
-        sentence_source_dir(),
-        cache_path(),
-    )
+        yield from search_index.search_sentence_index(
+            query,
+            limit,
+            sentence_source_dir(),
+            cache_path(),
+        )
 
 
 def search_matching_red_book_definitions(query, limit):
